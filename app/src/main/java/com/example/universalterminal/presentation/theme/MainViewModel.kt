@@ -5,13 +5,16 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 
 class MainViewModel @Inject constructor() : ViewModel() {
 
     val visiblePermissionDialogQueue = mutableStateListOf<String>()
-
-
+    private val _allPermissionsGranted = MutableStateFlow(false)
+    val allPermissionsGranted: StateFlow<Boolean> = _allPermissionsGranted.asStateFlow()
 
     @SuppressLint("NewApi")
     fun dismissDialog() {
@@ -20,17 +23,15 @@ class MainViewModel @Inject constructor() : ViewModel() {
         }
     }
 
-
-
     fun onPermissionResult(permission: String, isGranted: Boolean) {
-        // If not granted and not already in queue, add to queue
         if (!isGranted && !visiblePermissionDialogQueue.contains(permission)) {
             visiblePermissionDialogQueue.add(permission)
-        }
-        // If granted, remove from queue
-        else if (isGranted) {
+        } else if (isGranted) {
             visiblePermissionDialogQueue.remove(permission)
         }
+
+        // Проверяем, все ли разрешения были предоставлены
+        _allPermissionsGranted.value = visiblePermissionDialogQueue.isEmpty()
     }
 
 
