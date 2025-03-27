@@ -8,7 +8,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -16,8 +15,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -30,7 +34,6 @@ import com.example.universalterminal.presentation.theme.ui.screens.ConnectedDevi
 import com.example.universalterminal.presentation.theme.ui.screens.RawModeScreen
 import com.example.universalterminal.presentation.theme.ui.screens.TerminalModeScreen
 import dagger.hilt.android.AndroidEntryPoint
-import kotlin.getValue
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -42,6 +45,7 @@ class MainActivity : ComponentActivity() {
         Manifest.permission.ACCESS_COARSE_LOCATION,
         Manifest.permission.BLUETOOTH_SCAN,
     )
+
     @SuppressLint("NewApi")
     @RequiresApi(Build.VERSION_CODES.S)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,6 +56,7 @@ class MainActivity : ComponentActivity() {
                 val viewModel: MainViewModel by viewModels()
                 val dialogQueue = viewModel.visiblePermissionDialogQueue
                 val allPermissionsGranted = viewModel.allPermissionsGranted.collectAsState()
+                val errorMessage = viewModel.errorMessage.collectAsState()
                 val navController = rememberNavController()
 
                 val multiplePermissionResultLauncher = rememberLauncherForActivityResult(
@@ -68,7 +73,9 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(Unit) {
                     multiplePermissionResultLauncher.launch(permissionToRequest)
+                    viewModel.setContext(this@MainActivity) // Устанавливаем контекст
                 }
+
                 if (allPermissionsGranted.value) {
                     NavHost(navController = navController, startDestination = "scan") {
                         composable("scan") {
@@ -111,13 +118,10 @@ class MainActivity : ComponentActivity() {
                     }
                 } else {
                     val deniedPermissions = viewModel.getDeniedPermissions()
-                    Log.e("MainActivity", "Permissions not granted: $deniedPermissions")
-                    Log.e("MainActivity", "Permissions not granted {${allPermissionsGranted.value}} and $permissionToRequest")
                     dialogQueue
                         .reversed()
                         .forEach { permission ->
                             if (!viewModel.visiblePermissionDialogQueue.contains(permission)) return@forEach
-
                             PermissionDialog(
                                 permissionTextProvider = when (permission) {
                                     Manifest.permission.BLUETOOTH_CONNECT -> BluetoothPermissionTextProvider()
@@ -125,9 +129,7 @@ class MainActivity : ComponentActivity() {
                                     else -> return@forEach
                                 },
                                 isPermanentlyDeclined = !shouldShowRequestPermissionRationale(permission),
-                                onDismiss = {
-                                    viewModel.dismissDialog()
-                                },
+                                onDismiss = { viewModel.dismissDialog() },
                                 onOkClick = {
                                     viewModel.dismissDialog()
                                     multiplePermissionResultLauncher.launch(arrayOf(permission))
@@ -136,15 +138,53 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                 }
+
+                // Диалог с ошибкой
+                errorMessage.value?.let { message ->
+                    ErrorDialog(
+                        message = message,
+                        onDismiss = { viewModel.clearErrorMessage() },
+                        onGoToSettings = {
+                            viewModel.clearErrorMessage()
+                            openSystemSettings()
+                        }
+                    )
+                }
             }
         }
     }
+
+    private fun openAppSettings() {
+        Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", packageName, null)
+        ).also(::startActivity)
+    }
+
+    private fun openSystemSettings() {
+        Intent(Settings.ACTION_SETTINGS).also(::startActivity)
+    }
 }
 
-
-fun Activity.openAppSettings(){
-    Intent(
-        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-        Uri.fromParts("package", packageName, null)
-    ).also(::startActivity)
+@Composable
+fun ErrorDialog(
+    message: String,
+    onDismiss: () -> Unit,
+    onGoToSettings: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Ошибка") },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(onClick = onGoToSettings) {
+                Text("Настройки")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Закрыть")
+            }
+        }
+    )
 }
