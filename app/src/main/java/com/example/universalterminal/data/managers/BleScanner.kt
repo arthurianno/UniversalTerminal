@@ -2,6 +2,7 @@ package com.example.universalterminal.data.managers
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
@@ -18,34 +19,17 @@ class BleScanner @Inject constructor(private val bleScannerWrapper: BleScannerWr
     private val _isScanning = MutableStateFlow(false)
     val isScanning = _isScanning.asStateFlow()
 
-    private val _devicesFlow = MutableStateFlow<List<BleDevice>>(emptyList())
+    private val _devicesAll = MutableStateFlow<BluetoothDevice?>(null)
+    val devicesAll = _devicesAll.asStateFlow()
+
+
+    private val _devicesFlow = MutableStateFlow<Set<BleDevice>>(emptySet())
     val devicesFlow = _devicesFlow.asStateFlow()
 
+    private var scanCallback: ScanCallback? = null
+
+
     private val scannedDevices = mutableListOf<BleDevice>()
-
-    private val scanCallback = object : ScanCallback() {
-        @SuppressLint("MissingPermission")
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            val device = result.device.name
-            if(device != null && device.contains("SatelliteOnline")){
-                val bleDevice = BleDevice(
-                    name = device,
-                    address = result.device.address,
-                    rssi = result.rssi
-                )
-                Log.i("BleScanner", "Device found: $device")
-                if (!scannedDevices.contains(bleDevice)) {
-                    scannedDevices.add(bleDevice)
-                    Log.i("BleScanner", "Device added: $device")
-                    _devicesFlow.value = scannedDevices.toList()
-                }
-            }
-        }
-
-        override fun onScanFailed(errorCode: Int) {
-            stopScan()
-        }
-    }
 
     fun startScan() {
         scope.launch {
@@ -53,7 +37,32 @@ class BleScanner @Inject constructor(private val bleScannerWrapper: BleScannerWr
                 val settings = ScanSettings.Builder()
                     .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
                     .build()
-                bleScannerWrapper.startScan(scanCallback, settings)
+                scanCallback = object : ScanCallback(){
+                    @SuppressLint("MissingPermission")
+                    override fun onScanResult(callbackType: Int, result: ScanResult) {
+                        val device = result.device.name
+                        if(device != null){
+                            val bleDevice = BleDevice(
+                                name = device,
+                                address = result.device.address,
+                                rssi = result.rssi,
+                                device = result.device
+                            )
+                            Log.i("BleScanner", "Device found: $device")
+                            if (!scannedDevices.contains(bleDevice)) {
+                                scannedDevices.add(bleDevice)
+                                Log.i("BleScanner", "Device added: $device")
+                                _devicesFlow.value = scannedDevices.toSet()
+                            }
+                        }
+                    }
+
+                    override fun onScanFailed(errorCode: Int) {
+                        stopScan()
+                    }
+                }
+
+                bleScannerWrapper.startScan(scanCallback as ScanCallback, settings)
                 _isScanning.value = true
             } catch (e: Exception) {
                 Log.e("BleScanner", "Error starting scan", e)
@@ -65,7 +74,8 @@ class BleScanner @Inject constructor(private val bleScannerWrapper: BleScannerWr
     fun stopScan() {
         scope.launch {
             try {
-                bleScannerWrapper.stopScan(scanCallback)
+                scanCallback?.let { bleScannerWrapper.stopScan(it) }
+                scanCallback = null
             } catch (e: Exception) {
                 Log.e("BleScanner", "Error stopping scan", e)
             } finally {
@@ -88,5 +98,6 @@ class BleScannerWrapper(){
     @SuppressLint("MissingPermission")
     fun stopScan(callback: ScanCallback) {
         bleScanner?.stopScan(callback)
+
     }
 }

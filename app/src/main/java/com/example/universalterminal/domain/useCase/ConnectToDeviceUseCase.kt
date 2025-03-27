@@ -5,8 +5,8 @@ import com.example.universalterminal.domain.repository.BleRepository
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
-class ScanDevicesUseCase @Inject constructor(private val repository: BleRepository) {
-    suspend operator fun invoke(): Flow<Set<BleDevice>> {
-        return repository.scanDevices()
+class ConnectToDeviceUseCase @Inject constructor(private val repository: BleRepository){
+    suspend operator fun invoke(bleDevice: BleDevice): Flow<Boolean> {
+        return repository.connectToDevice(bleDevice)
     }
 }

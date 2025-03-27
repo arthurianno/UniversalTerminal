@@ -72,6 +72,12 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation(libs.androidx.hilt.navigation.compose)
+    implementation ("androidx.compose.material:material-icons-extended:1.5.4")
+
+    implementation ("no.nordicsemi.android:ble:2.7.5")
+    implementation ("no.nordicsemi.android:dfu:2.4.1")
+
+
 }
 
 kapt {
