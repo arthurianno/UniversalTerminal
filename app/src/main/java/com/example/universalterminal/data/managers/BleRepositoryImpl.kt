@@ -1,12 +1,17 @@
 package com.example.universalterminal.data.managers
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.content.Context
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import com.example.universalterminal.data.BLE.BleDeviceManager
 import com.example.universalterminal.data.managers.BluetoothConstants.CONFIGURATION_SIZE
 import com.example.universalterminal.domain.entities.BleDevice
 import com.example.universalterminal.domain.repository.BleRepository
+import com.example.universalterminal.presentation.theme.ui.ScanMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -31,9 +36,12 @@ class BleRepositoryImpl @Inject constructor(
     private val bleDeviceManager: BleDeviceManager,
     @ApplicationContext private val context: Context
 ): BleRepository {
+    private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+    @RequiresApi(Build.VERSION_CODES.O)
     @SuppressLint("MissingPermission")
-    override suspend fun scanDevices(): Flow<Set<BleDevice>> {
-        bleScanner.startScan()
+    override suspend fun scanDevices(scanMode: ScanMode): Flow<Set<BleDevice>> {
+        stopScanDevices()
+        bleScanner.startScan(scanMode)
         Log.i("BleRepository", "Scanning started")
         Log.i("BleRepository", "Device to rep: ${bleScanner.devicesFlow.value}")
         return bleScanner.devicesFlow
@@ -47,14 +55,63 @@ class BleRepositoryImpl @Inject constructor(
         return bleScanner.isScanning
     }
 
-    override suspend fun connectToDevice(device: BleDevice): Flow<Boolean> {
-        val connection = bleDeviceManager.connectToDevice(device)
-        return if (connection){
-            flowOf(true)
-        }else{
-            flowOf(false)
+    @RequiresApi(Build.VERSION_CODES.O)
+    @SuppressLint("MissingPermission")
+    override suspend fun connectToDevice(device: BleDevice): Flow<Boolean> = flow {
+        // Проверяем, связано ли устройство
+        val bondedDevices = bluetoothAdapter?.bondedDevices ?: emptySet()
+        val bondedDevice = bondedDevices.find { it.address == device.address }
+
+        if (bondedDevice != null) {
+            Log.i("BleRepository", "Connecting to bonded device ${device.address}")
+            val success = bleDeviceManager.connectToDevice(device.copy(device = bondedDevice))
+            emit(success)
+        } else {
+            Log.i("BleRepository", "Device ${device.address} not bonded, attempting direct connection")
+            // Создаем BluetoothDevice из адреса
+            val bluetoothDevice = bluetoothAdapter?.getRemoteDevice(device.address)
+            if (bluetoothDevice == null) {
+                Log.e("BleRepository", "Failed to create BluetoothDevice for ${device.address}")
+                emit(false)
+                return@flow
+            }
+
+            // Пытаемся инициировать связывание
+            if (bluetoothDevice.bondState == BluetoothDevice.BOND_NONE) {
+                Log.i("BleRepository", "Initiating bonding for ${device.address}")
+                val bondResult = bluetoothDevice.createBond()
+                if (!bondResult) {
+                    Log.e("BleRepository", "Failed to initiate bonding for ${device.address}")
+                }
+            }
+
+            // Пытаемся подключиться напрямую
+            val success = bleDeviceManager.connectToDevice(device.copy(device = bluetoothDevice))
+            if (success) {
+                Log.i("BleRepository", "Direct connection successful for ${device.address}")
+                emit(true)
+            } else {
+                Log.w("BleRepository", "Direct connection failed, falling back to scanning")
+                // Если подключение не удалось, запускаем сканирование
+                val scannedDevices = scanDevices(ScanMode.AGGRESSIVE).last()
+                val targetDevice = scannedDevices.find { it.address == device.address }
+                if (targetDevice != null) {
+                    Log.i("BleRepository", "Device ${device.address} found, connecting and initiating bonding")
+                    // Повторно инициируем bonding, если нужно
+                    targetDevice.device?.let { btDevice ->
+                        if (btDevice.bondState == BluetoothDevice.BOND_NONE) {
+                            btDevice.createBond()
+                        }
+                    }
+                    val success = bleDeviceManager.connectToDevice(targetDevice)
+                    emit(success)
+                } else {
+                    Log.e("BleRepository", "Device ${device.address} not found during scan")
+                    emit(false)
+                }
+            }
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
     override suspend fun sendCommand(command: String): Flow<ByteArray> {
         val response = bleDeviceManager.sendCommand(command)
@@ -159,6 +216,7 @@ class BleRepositoryImpl @Inject constructor(
                         setDeviceName("Dfu")
                         setKeepBond(false)
                         setForceDfu(true)
+                        setKeepBond(true)
                         setNumberOfRetries(1)
                         setForceScanningForNewAddressInLegacyDfu(false)
                         setPrepareDataObjectDelay(400L)
@@ -241,10 +299,10 @@ class BleRepositoryImpl @Inject constructor(
 
 object BluetoothConstants {
     const val CHUNK_SIZE = 240
-    const val CONFIGURATION_SIZE = 16 // Укажите ваш реальный размер конфигурации
-    const val BOOT_MODE_START: Byte = 0x24 // Укажите ваше реальное значение
-    const val FIRMWARE_CHUNK_CMD: Byte = 0x01 // Укажите ваше реальное значение
-    const val CONFIGURATION_CMD: Byte = 0x04 // Укажите ваше реальное значение
+    const val CONFIGURATION_SIZE = 16
+    const val BOOT_MODE_START: Byte = 0x24
+    const val FIRMWARE_CHUNK_CMD: Byte = 0x01
+    const val CONFIGURATION_CMD: Byte = 0x04
     const val WRITE_CMD: Byte = 0x01
     const val RAW_ASK: Byte = 0x00
     const val RAW_START_MARK: Byte = 0x21

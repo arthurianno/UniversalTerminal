@@ -1,6 +1,7 @@
 package com.example.universalterminal.presentation.theme.ui
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -127,9 +128,9 @@ class RawModeViewModel @Inject constructor(
                     }
                 }
                 Log.d("RawModeViewModel", "Proceeding to send multiple read commands")
-                if (forModify){
+                if (forModify) {
                     sendModifiedData(modifiedData!!)
-                }else{
+                } else {
                     sendMultipleReadCommands()
                 }
 
@@ -174,19 +175,24 @@ class RawModeViewModel @Inject constructor(
                 bleDeviceManager.writeDataRaw(command).collect { result ->
                     when (result) {
                         is BleDeviceManager.WriteResult.Success -> {
-                            val rawResponse = result.response.joinToString(" ") { it.toString(16).padStart(2, '0') }
+                            val rawResponse = result.response.joinToString(" ") {
+                                it.toString(16).padStart(2, '0')
+                            }
                             Log.d("RawModeViewModel", "Raw response: $rawResponse")
                             val parsedData = parseResponse(result.response)
                             allConfigData.addAll(parsedData)
                             _readResponseFlow.emit(allConfigData.toList())
                         }
+
                         is BleDeviceManager.WriteResult.Error -> {
                             _errorState.value = "Write error: ${result.exception.message}"
                         }
+
                         BleDeviceManager.WriteResult.DeviceNotConnected -> {
                             _errorState.value = "Device disconnected during operation"
                             _isRawModeActive.value = false // Reset raw mode on disconnect
                         }
+
                         BleDeviceManager.WriteResult.CharacteristicNull -> {
                             _errorState.value = "BLE characteristic not found"
                         }
@@ -224,12 +230,12 @@ class RawModeViewModel @Inject constructor(
             0x18 to Pair("Калибровка тока (60 мкА)", "FLOAT"),
             0x1C to Pair("Калибровка температуры (мВ)", "FLOAT"),
             0x20 to Pair("Значение R1 (Ом)", "UINT32"),
-            0x24 to Pair("Калибровка Uref (UIC1101)", "UINT32_HEX"), // Custom type for hex display
-            0x28 to Pair("Калибровка Uw (UIC1101)", "UINT32_HEX"),  // Custom type for hex display
+            0x24 to Pair("Калибровка Uref (UIC1101)", "UINT32_HEX"),
+            0x28 to Pair("Калибровка Uw (UIC1101)", "UINT32_HEX"),
             0x2C to Pair("Калибровка температуры (°C x10)", "UINT32"),
-            0x30 to Pair("Дата выпуска устройства (UNIX)", "TIMESTAMP"),     // Custom type for timestamp
+            0x30 to Pair("Дата выпуска устройства (UNIX)", "TIMESTAMP"),
             0x34 to Pair("Калибровка напряжения питания", "FLOAT"),
-            0x38 to Pair("Слово конфигурации устройства", "BITWISE"),       // Custom type for bitwise
+            0x38 to Pair("Слово конфигурации устройства", "BITWISE"),
             0x3C to Pair("Имя выпускавшего оператора", "Char[]"),
             0x4C to Pair("Аппаратная версия устройства", "Char[]"),
             0x5C to Pair("Серийный номер устройства", "Char[]"),
@@ -250,6 +256,7 @@ class RawModeViewModel @Inject constructor(
                                 .float.toString()
                         } else "Invalid data"
                     }
+
                     "UINT32" -> {
                         if (data.size - offset >= 4) {
                             ByteBuffer.wrap(data.drop(offset).take(4).toByteArray())
@@ -257,7 +264,8 @@ class RawModeViewModel @Inject constructor(
                                 .int.toUInt().toString()
                         } else "Invalid data"
                     }
-                    "UINT32_HEX" -> { // For Uref and Uw
+
+                    "UINT32_HEX" -> {
                         if (data.size - offset >= 4) {
                             val intValue = ByteBuffer.wrap(data.drop(offset).take(4).toByteArray())
                                 .order(ByteOrder.LITTLE_ENDIAN)
@@ -265,22 +273,26 @@ class RawModeViewModel @Inject constructor(
                             "0x${intValue.toString(16).uppercase().padStart(8, '0')}"
                         } else "Invalid data"
                     }
-                    "TIMESTAMP" -> { // For setupTime
+
+                    "TIMESTAMP" -> {
                         if (data.size - offset >= 4) {
                             val timestamp = ByteBuffer.wrap(data.drop(offset).take(4).toByteArray())
                                 .order(ByteOrder.LITTLE_ENDIAN)
                                 .int.toLong()
-                            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(java.util.Date(timestamp * 1000))
+                            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                                .format(java.util.Date(timestamp * 1000))
                         } else "Invalid data"
                     }
-                    "BITWISE" -> { // For configWord
+
+                    "BITWISE" -> {
                         if (data.size - offset >= 4) {
                             val intValue = ByteBuffer.wrap(data.drop(offset).take(4).toByteArray())
                                 .order(ByteOrder.LITTLE_ENDIAN)
                                 .int.toUInt()
-                            intValue.toString(2).padStart(32, '0') // 32-bit binary string
+                            intValue.toString(2).padStart(32, '0')
                         } else "Invalid data"
                     }
+
                     "INT32" -> {
                         if (data.size - offset >= 4) {
                             ByteBuffer.wrap(data.drop(offset).take(4).toByteArray())
@@ -288,14 +300,24 @@ class RawModeViewModel @Inject constructor(
                                 .int.toString()
                         } else "Invalid data"
                     }
+
                     "Char[]" -> {
                         if (data.size - offset >= 16) {
-                            String(data.drop(offset).take(16).toByteArray(), charset("CP1251")).trim()
+                            val bytes = data.drop(offset).take(16).toByteArray()
+                            val str = String(bytes, charset("CP1251"))
+                            val nullIndex = str.indexOf('\u0000') // Ищем \0
+                            if (nullIndex >= 0) str.substring(
+                                0,
+                                nullIndex
+                            ) else str // Обрезаем до \0
                         } else "Invalid data"
                     }
+
                     "BYTE[]" -> {
-                        data.drop(offset).take(num - offset).joinToString(" ") { it.toString(16).padStart(2, '0') }
+                        data.drop(offset).take(num - offset)
+                            .joinToString(" ") { it.toString(16).padStart(2, '0') }
                     }
+
                     else -> "Unsupported type"
                 }
                 result.add(
@@ -347,31 +369,43 @@ class RawModeViewModel @Inject constructor(
 
                 for (data in modifiedData.filter { it.isModified }) {
                     val address = data.address.removePrefix("0x").toInt(16)
+                    Log.d("RawModeViewModel", "Sending modified data for ${data.name} and $address")
                     val newValueBytes = when (data.type) {
                         "FLOAT" -> ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
                             .putFloat(data.newValue!!.toFloat()).array()
+
                         "UINT32" -> ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
                             .putInt(data.newValue!!.toUInt().toInt()).array()
-                        "UINT32_HEX" -> { // Uref and Uw: Convert decimal input to hex
+
+                        "UINT32_HEX" -> {
                             val decimalValue = data.newValue!!.toUInt()
                             ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
                                 .putInt(decimalValue.toInt()).array()
                         }
-                        "TIMESTAMP" -> { // setupTime: Convert date string to UNIX timestamp
+
+                        "TIMESTAMP" -> {
                             val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
                             val date = dateFormat.parse(data.newValue!!)
                             ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
                                 .putInt((date.time / 1000).toInt()).array()
                         }
-                        "BITWISE" -> { // configWord: Convert binary string to int
-                            val binaryString = data.newValue!!.replace(" ", "") // Remove spaces if any
-                            val intValue = binaryString.toUInt(2) // Parse binary string to uint
+
+                        "BITWISE" -> {
+                            val binaryString = data.newValue!!.replace(" ", "")
+                            val intValue = binaryString.toUInt(2)
                             ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
                                 .putInt(intValue.toInt()).array()
                         }
+
                         "INT32" -> ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
                             .putInt(data.newValue!!.toInt()).array()
-                        "Char[]" -> data.newValue!!.padEnd(16, ' ').toByteArray(charset("CP1251")).copyOf(16)
+
+                        "Char[]" -> {
+                            val str = data.newValue!! + '\u0000' // Добавляем \0
+                            val padded = str.padEnd(16, '\u0000') // Падим \0
+                            padded.toByteArray(charset("CP1251")).copyOf(16)
+                        }
+
                         else -> throw IllegalArgumentException("Unsupported type: ${data.type}")
                     }
 
@@ -387,10 +421,13 @@ class RawModeViewModel @Inject constructor(
                             is BleDeviceManager.WriteResult.Success -> {
                                 Log.d("RawModeViewModel", "Write success for ${data.name}")
                             }
+
                             is BleDeviceManager.WriteResult.Error -> {
-                                _errorState.value = "Write error for ${data.name}: ${result.exception.message}"
+                                _errorState.value =
+                                    "Write error for ${data.name}: ${result.exception.message}"
                                 return@collect
                             }
+
                             else -> {
                                 _errorState.value = "Unexpected error during write for ${data.name}"
                                 return@collect

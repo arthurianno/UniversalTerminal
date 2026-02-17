@@ -37,8 +37,8 @@ object projectModule {
 
     @Provides
     @Singleton
-    fun provideBleScanner(bleScannerWrapper: BleScannerWrapper, coroutineScope: CoroutineScope): BleScanner {
-        return BleScanner(bleScannerWrapper, coroutineScope)
+    fun provideBleScanner(bleScannerWrapper: BleScannerWrapper, coroutineScope: CoroutineScope, @ApplicationContext context: Context): BleScanner {
+        return BleScanner(bleScannerWrapper, coroutineScope,context)
     }
 
     @Provides

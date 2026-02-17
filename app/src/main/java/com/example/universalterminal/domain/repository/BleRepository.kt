@@ -2,10 +2,11 @@ package com.example.universalterminal.domain.repository
 
 import android.bluetooth.BluetoothDevice
 import com.example.universalterminal.domain.entities.BleDevice
+import com.example.universalterminal.presentation.theme.ui.ScanMode
 import kotlinx.coroutines.flow.Flow
 
 interface BleRepository {
-    suspend fun scanDevices(): Flow<Set<BleDevice>>
+    suspend fun scanDevices(scanMode: ScanMode): Flow<Set<BleDevice>>
     suspend fun stopScanDevices(): Flow<Boolean>
     suspend fun connectToDevice(device: BleDevice): Flow<Boolean>
     suspend fun sendCommand(command: String): Flow<ByteArray>

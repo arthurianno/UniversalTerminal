@@ -1,27 +1,23 @@
 package com.example.universalterminal.presentation.theme
 
 import android.Manifest
-import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.annotation.RequiresApi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -34,29 +30,34 @@ import com.example.universalterminal.presentation.theme.ui.screens.ConnectedDevi
 import com.example.universalterminal.presentation.theme.ui.screens.RawModeScreen
 import com.example.universalterminal.presentation.theme.ui.screens.TerminalModeScreen
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    @RequiresApi(Build.VERSION_CODES.S)
-    private val permissionToRequest = arrayOf(
-        Manifest.permission.BLUETOOTH_CONNECT,
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.ACCESS_COARSE_LOCATION,
-        Manifest.permission.BLUETOOTH_SCAN,
-    )
+    private val permissionToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+    } else {
+        arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+    }
 
-    @SuppressLint("NewApi")
-    @RequiresApi(Build.VERSION_CODES.S)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             UniversalTerminalTheme {
                 val viewModel: MainViewModel by viewModels()
-                val dialogQueue = viewModel.visiblePermissionDialogQueue
+                val dialogQueue = viewModel.visiblePermissionDialogQueue.collectAsState()
                 val allPermissionsGranted = viewModel.allPermissionsGranted.collectAsState()
                 val errorMessage = viewModel.errorMessage.collectAsState()
+                val lastConnectedDevice = viewModel.lastConnectedDevice.collectAsState()
                 val navController = rememberNavController()
 
                 val multiplePermissionResultLauncher = rememberLauncherForActivityResult(
@@ -72,74 +73,67 @@ class MainActivity : ComponentActivity() {
                 )
 
                 LaunchedEffect(Unit) {
-                    multiplePermissionResultLauncher.launch(permissionToRequest)
-                    viewModel.setContext(this@MainActivity) // Устанавливаем контекст
-                }
-
-                if (allPermissionsGranted.value) {
-                    NavHost(navController = navController, startDestination = "scan") {
-                        composable("scan") {
-                            BleScanScreen(
-                                onNavigateToConnected = {
-                                    navController.navigate("connected") {
-                                        popUpTo("scan") { inclusive = true }
-                                    }
-                                }
-                            )
-                        }
-                        composable("connected") {
-                            ConnectedDeviceScreen(
-                                onNavigate = { route ->
-                                    navController.navigate(route)
-                                }
-                            )
-                        }
-                        composable("boot_mode") {
-                            BootModeScreen(
-                                onNavigateBack = {
-                                    navController.navigateUp()
-                                }
-                            )
-                        }
-                        composable("raw_mode") {
-                            RawModeScreen(
-                                onNavigateBack = {
-                                    navController.navigateUp()
-                                }
-                            )
-                        }
-                        composable("terminal_mode") {
-                            TerminalModeScreen(
-                                onNavigateBack = {
-                                    navController.navigateUp()
-                                }
-                            )
-                        }
+                    withContext(Dispatchers.IO) {
+                        viewModel.setContext(this@MainActivity)
                     }
-                } else {
-                    val deniedPermissions = viewModel.getDeniedPermissions()
-                    dialogQueue
-                        .reversed()
-                        .forEach { permission ->
-                            if (!viewModel.visiblePermissionDialogQueue.contains(permission)) return@forEach
-                            PermissionDialog(
-                                permissionTextProvider = when (permission) {
-                                    Manifest.permission.BLUETOOTH_CONNECT -> BluetoothPermissionTextProvider()
-                                    Manifest.permission.ACCESS_FINE_LOCATION -> LocationPermissionTextProvider()
-                                    else -> return@forEach
-                                },
-                                isPermanentlyDeclined = !shouldShowRequestPermissionRationale(permission),
-                                onDismiss = { viewModel.dismissDialog() },
-                                onOkClick = {
-                                    viewModel.dismissDialog()
-                                    multiplePermissionResultLauncher.launch(arrayOf(permission))
-                                },
-                                onGoToAppSettingsClick = ::openAppSettings
-                            )
-                        }
                 }
 
-                // Диалог с ошибкой
+                NavHost(navController = navController, startDestination = "scan") {
+                    composable("scan") {
+                        BleScanScreen(
+                            onNavigateToConnected = {
+                                viewModel.checkBlePermissions()
+                                if (viewModel.allPermissionsGranted.value) {
+                                    navController.navigate("connected")
+                                } else {
+                                    multiplePermissionResultLauncher.launch(permissionToRequest)
+                                }
+                            }
+                        )
+                    }
+                    composable("connected") {
+                        ConnectedDeviceScreen(
+                            viewModel = viewModel,  // Передаём viewModel
+                            onNavigate = { route ->
+                                navController.navigate(route)
+                            }
+                        )
+                    }
+                    composable("boot_mode") {
+                        BootModeScreen(
+                            onNavigateBack = {
+                                navController.navigateUp()
+                            }
+                        )
+                    }
+                    composable("raw_mode") {
+                        RawModeScreen(
+                            onNavigateBack = {
+                                navController.navigateUp()
+                            }
+                        )
+                    }
+                    composable("terminal_mode") {
+                        TerminalModeScreen(
+                            onNavigateBack = {
+                                navController.navigateUp()
+                            }
+                        )
+                    }
+                }
+
+                dialogQueue.value.takeIf { it.isNotEmpty() }?.let {
+                    PermissionPrompt(
+                        dialogQueue = it,
+                        viewModel = viewModel,
+                        multiplePermissionResultLauncher = multiplePermissionResultLauncher,
+                        openAppSettings = ::openAppSettings,
+                        shouldShowRequestPermissionRationale = { permission ->
+                            shouldShowRequestPermissionRationale(permission)
+                        }
+                    )
+                }
+
                 errorMessage.value?.let { message ->
                     ErrorDialog(
                         message = message,
@@ -164,6 +158,38 @@ class MainActivity : ComponentActivity() {
     private fun openSystemSettings() {
         Intent(Settings.ACTION_SETTINGS).also(::startActivity)
     }
+}
+
+@Composable
+fun PermissionPrompt(
+    dialogQueue: List<String>,
+    viewModel: MainViewModel,
+    multiplePermissionResultLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
+    openAppSettings: () -> Unit,
+    shouldShowRequestPermissionRationale: (String) -> Boolean
+) {
+    dialogQueue
+        .reversed()
+        .forEach { permission ->
+            PermissionDialog(
+                permissionTextProvider = when (permission) {
+                    Manifest.permission.BLUETOOTH_SCAN,
+                    Manifest.permission.BLUETOOTH_CONNECT -> BluetoothPermissionTextProvider()
+                    Manifest.permission.ACCESS_FINE_LOCATION -> LocationPermissionTextProvider()
+                    else -> return@forEach
+                },
+                isPermanentlyDeclined = !shouldShowRequestPermissionRationale(permission),
+                onDismiss = { viewModel.dismissDialog(permission) },
+                onOkClick = {
+                    viewModel.dismissDialog(permission)
+                    multiplePermissionResultLauncher.launch(arrayOf(permission))
+                },
+                onGoToAppSettingsClick = {
+                    viewModel.dismissDialog(permission)
+                    openAppSettings()
+                }
+            )
+        }
 }
 
 @Composable

@@ -1,13 +1,10 @@
 package com.example.universalterminal.presentation.theme.ui.dialogs
 
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-
 
 @Composable
 fun PermissionDialog(
@@ -21,17 +18,22 @@ fun PermissionDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-           TextButton(onClick = onOkClick) {
-                Text(text = "OK")
+            TextButton(onClick = {
+                if (!isPermanentlyDeclined) {
+                    onOkClick()
+                } else {
+                    onGoToAppSettingsClick()
+                }
+            }) {
+                Text(text = if (isPermanentlyDeclined) "Настройки приложения" else "ОК")
             }
         },
         dismissButton = {
-            if (isPermanentlyDeclined) {
-                TextButton(onClick = onGoToAppSettingsClick) {
-                    Text(text = "App Settings")
-                }
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
             }
         },
+        title = { Text("Требуется разрешение") },
         text = {
             Text(
                 text = permissionTextProvider.getDescription(isPermanentlyDeclined)
@@ -41,29 +43,26 @@ fun PermissionDialog(
     )
 }
 
-
 interface PermissionTextProvider {
     fun getDescription(isPermanentlyDeclined: Boolean): String
 }
 
-class BluetoothPermissionTextProvider : PermissionTextProvider{
+class BluetoothPermissionTextProvider : PermissionTextProvider {
     override fun getDescription(isPermanentlyDeclined: Boolean): String {
         return if (isPermanentlyDeclined) {
-            "It seems you permanently declined bluetooth permission. " + "You can go to the app settings to grant it."
-        } else{
-            "This app needs access to bluetooth in order to scan for bluetooth devices."
+            "Вы отклонили разрешение на Bluetooth. Перейдите в настройки приложения, чтобы включить его."
+        } else {
+            "Приложению требуется доступ к Bluetooth для поиска устройств."
         }
     }
-
 }
 
-class LocationPermissionTextProvider : PermissionTextProvider{
+class LocationPermissionTextProvider : PermissionTextProvider {
     override fun getDescription(isPermanentlyDeclined: Boolean): String {
         return if (isPermanentlyDeclined) {
-            "It seems you permanently declined location permission. " + "You can go to the app settings to grant it."
-        } else{
-            "This app needs access to location in order to scan for bluetooth devices."
+            "Вы отклонили разрешение на доступ к местоположению. Перейдите в настройки приложения, чтобы включить его."
+        } else {
+            "Приложению требуется доступ к местоположению для сканирования Bluetooth-устройств."
         }
     }
-
 }

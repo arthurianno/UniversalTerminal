@@ -11,4 +11,5 @@ interface DeviceWorkingRepository {
     suspend fun getDevicePassword(deviceAddress: String): Flow<String?>
     suspend fun getDeviceInformation(device: BleDevice):Flow<BleDevice?>
     suspend fun saveDeviceInfo(device: BleDevice)
+    suspend fun clearDeviceData()
 }

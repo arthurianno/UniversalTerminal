@@ -1,6 +1,7 @@
 package com.example.universalterminal.presentation.theme.ui.screens
 
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,6 +36,7 @@ import com.example.universalterminal.presentation.theme.ui.FirmwareType
 import com.example.universalterminal.presentation.theme.ui.FirmwareUpdateState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.text.substringAfter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,10 +130,28 @@ fun BootModeScreen(
                         )
                     }
 
+                    val model = deviceInfo?.deviceInfo?.model ?: "Unknown"
+                    val firmwareVersion = deviceInfo?.deviceInfo?.firmwareVersion.orEmpty()
+
+// Извлекаем hwRev из firmwareVersion
+                    val hwRev = firmwareVersion
+                        .substringAfter("hw:rev.", "")
+                        .substringBefore(" ", "")
+                        .trim()
+
+                    val hardwareInfo = if (hwRev.isNotEmpty()) "$model, $hwRev" else model
+
+                    Log.e("check", hardwareInfo)
+                    Log.e("check2", hwRev)
+
+
                     DeviceInfoRow("Device Name", deviceInfo?.name ?: "Unknown")
                     DeviceInfoRow("Address", deviceInfo?.address ?: "Unknown")
                     DeviceInfoRow(label = "Serial Number", value = deviceInfo?.deviceInfo?.serialNumber?.removePrefix("ser.") ?: "Unknown")
-                    DeviceInfoRow("Hardware", deviceInfo?.deviceInfo?.model ?: "Unknown")
+                    DeviceInfoRow("Hardware", hardwareInfo)
+                    DeviceInfoRow("Version", deviceInfo?.deviceInfo?.version?.substringAfter("sw:")
+                        ?.substringBefore(" ")
+                        ?.trim() ?: "Unknown")
                 }
             }
 

@@ -179,8 +179,8 @@ class BootModeViewModel @Inject constructor(
                     return false
                 }
 
-                if (major != 4 || (minor > 1) || (minor == 1 && patch > 5)) {
-                    _fileValidationError.value = "NORDIC device requires firmware version 4.0.0 - 4.1.5"
+                if (major != 4 || (minor > 1) || (minor == 1 && patch > 9)) {
+                    _fileValidationError.value = "NORDIC device requires firmware version 4.0.0 - 4.1.9"
                     return false
                 }
             } else {
@@ -246,6 +246,15 @@ class BootModeViewModel @Inject constructor(
                             delay(1000L)
                             writeConfigurationUseCase.invoke(datData).collect {
                                 Log.e("ViewModel", "Configuration: $it")
+                                if (it){
+                                    _firmwareUpdateState.value = FirmwareUpdateState.Success
+                                    _isUpdateButtonEnabled.value = true
+                                    return@collect
+                                }else{
+                                    _firmwareUpdateState.value = FirmwareUpdateState.Error("Firmware update failed")
+                                    _isUpdateButtonEnabled.value = true
+                                    return@collect
+                                }
                             }
                         }
 
@@ -274,7 +283,15 @@ class BootModeViewModel @Inject constructor(
                             Log.e("ViewModel", "Scan: $it")
                             loadDfuUseCase.invoke(scannerDevice.address, firmware.filePath).collect {
                                 Log.e("ViewModel", "DFU: $it")
-
+                                if (it){
+                                    _firmwareUpdateState.value = FirmwareUpdateState.Success
+                                    _isUpdateButtonEnabled.value = true
+                                    return@collect
+                                }else{
+                                    _firmwareUpdateState.value = FirmwareUpdateState.Error("Firmware update failed")
+                                    _isUpdateButtonEnabled.value = true
+                                    return@collect
+                                }
                             }
                         }
                     }else {
@@ -331,7 +348,7 @@ class BootModeViewModel @Inject constructor(
         withContext(Dispatchers.IO) {
             try {
                 withTimeout(30000) {
-                    scanDevicesUseCase.invoke()
+                    scanDevicesUseCase.invoke(ScanMode.BALANCED)
                         .collect { devicesSet ->
                             val foundDevice = devicesSet.firstOrNull { device ->
                                 device.address == deviceAddressDFU

@@ -45,23 +45,22 @@ class DeviceWorkingRepositoryImpl @Inject constructor(
         private const val KEY_DEVICE_INFO_HARDWARE_VERSION = "device_info_hardware_version"
     }
 
-    override suspend fun saveLastConnectedDevice(device: BleDevice): Unit =
-        withContext(Dispatchers.IO) {
-            try {
-                sharedPreferences.edit().apply {
-                    putString(KEY_LAST_DEVICE_ADDRESS, device.address)
-                    putString(KEY_LAST_DEVICE_NAME, device.name)
-                    putInt(KEY_LAST_DEVICE_RSSI, device.rssi)
-                    apply()
-                }
-                Log.d(
-                    TAG,
-                    "Saved last connected device: ${device.name}, ${device.address}, RSSI: ${device.rssi}"
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Error saving last connected device", e)
+    override suspend fun saveLastConnectedDevice(device: BleDevice): Unit = withContext(Dispatchers.IO) {
+        try {
+            Log.e("Check", "Entering saveLastConnectedDevice for device: $device")
+            clearDeviceData() // Очистка перед сохранением
+            sharedPreferences.edit().apply {
+                putString(KEY_LAST_DEVICE_ADDRESS, device.address)
+                putString(KEY_LAST_DEVICE_NAME, device.name)
+                putInt(KEY_LAST_DEVICE_RSSI, device.rssi)
+                commit() // Используем commit() для синхронной записи
             }
+            Log.d(TAG, "Saved device: name=${device.name}, address=${device.address}, rssi=${device.rssi}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving last connected device", e)
         }
+    }
+
 
     override suspend fun getDeviceInformation(device: BleDevice): Flow<BleDevice?> =
         flow {
@@ -73,24 +72,25 @@ class DeviceWorkingRepositoryImpl @Inject constructor(
                     val model = sharedPreferences.getString("${KEY_DEVICE_INFO_MODEL}_$deviceAddress", null)
                     val firmwareVersion = sharedPreferences.getString("${KEY_DEVICE_INFO_FIRMWARE_VERSION}_$deviceAddress", null)
 
-                    val deviceInfo = DeviceInfo(
-                        version = version,
-                        serialNumber = serialNumber,
-                        model = model,
-                        firmwareVersion = firmwareVersion,
-                    )
-
-                    device.copy(deviceInfo = deviceInfo)
+                    if (version == null && serialNumber == null && model == null && firmwareVersion == null) {
+                        // Если информация отсутствует, возвращаем устройство без deviceInfo
+                        device.copy(deviceInfo = null)
+                    } else {
+                        val deviceInfo = DeviceInfo(
+                            version = version,
+                            serialNumber = serialNumber,
+                            model = model,
+                            firmwareVersion = firmwareVersion,
+                        )
+                        device.copy(deviceInfo = deviceInfo)
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error getting device information", e)
-                    null
+                    device.copy(deviceInfo = null)
                 }
             }
             emit(result)
         }
-
-
-
 
     override suspend fun getLastConnectedDevice(): Flow<BleDevice?> =
         flow {
@@ -104,29 +104,40 @@ class DeviceWorkingRepositoryImpl @Inject constructor(
                         Log.d(TAG, "Retrieved last connected device: $name, $address, RSSI: $rssi")
 
                         try {
-                            // Get the actual BluetoothDevice from the adapter
+                            // Проверяем, доступно ли устройство через BluetoothAdapter
                             val device = bluetoothAdapter.getRemoteDevice(address)
-                            BleDevice(
-                                name = name,
-                                address = address,
-                                rssi = rssi,
-                                device = device
-                            )
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error retrieving Bluetooth device", e)
+                            // Проверяем, существует ли устройство
+                            if (device != null) {
+                                BleDevice(
+                                    name = name,
+                                    address = address,
+                                    rssi = rssi,
+                                    device = device
+                                )
+                            } else {
+                                // Если устройство недоступно, очищаем данные и возвращаем null
+                                clearDeviceData()
+                                Log.w(TAG, "Device with address $address is not available, cleared data")
+                                null
+                            }
+                        } catch (e: IllegalArgumentException) {
+                            // Если адрес недействителен или устройство не найдено
+                            clearDeviceData()
+                            Log.e(TAG, "Invalid device address or device not found, cleared data", e)
                             null
                         }
                     } else {
+                        Log.d(TAG, "No last connected device found in SharedPreferences")
                         null
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error getting last connected device", e)
+                    clearDeviceData() // Очищаем данные при любой ошибке
                     null
                 }
             }
             emit(result)
         }
-
 
     override suspend fun saveDeviceInfo(device: BleDevice): Unit =
         withContext(Dispatchers.IO) {
@@ -138,7 +149,6 @@ class DeviceWorkingRepositoryImpl @Inject constructor(
                         putString("${KEY_DEVICE_INFO_SERIAL_NUMBER}_$deviceAddress", info.serialNumber)
                         putString("${KEY_DEVICE_INFO_MODEL}_$deviceAddress", info.model)
                         putString("${KEY_DEVICE_INFO_FIRMWARE_VERSION}_$deviceAddress", info.firmwareVersion)
-
                     }
                     apply()
                 }
@@ -179,8 +189,27 @@ class DeviceWorkingRepositoryImpl @Inject constructor(
             emit(result)
         }
 
-
+    override suspend fun clearDeviceData(): Unit = withContext(Dispatchers.IO) {
+        try {
+            Log.e(TAG, "Clearing all device data from SharedPreferences")
+            val lastDeviceAddress = sharedPreferences.getString(KEY_LAST_DEVICE_ADDRESS, null)
+            sharedPreferences.edit().apply {
+                remove(KEY_LAST_DEVICE_ADDRESS)
+                remove(KEY_LAST_DEVICE_NAME)
+                remove(KEY_LAST_DEVICE_RSSI)
+                lastDeviceAddress?.let { address ->
+                    remove("${KEY_DEVICE_INFO_VERSION}_$address")
+                    remove("${KEY_DEVICE_INFO_SERIAL_NUMBER}_$address")
+                    remove("${KEY_DEVICE_INFO_MODEL}_$address")
+                    remove("${KEY_DEVICE_INFO_FIRMWARE_VERSION}_$address")
+                    remove("${KEY_DEVICE_INFO_HARDWARE_VERSION}_$address")
+                    remove("$KEY_PASSWORD_PREFIX$address")
+                }
+                commit() // Замените apply() на commit() для синхронной очистки
+            }
+            Log.d(TAG, "Cleared all device data from SharedPreferences")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error clearing device data", e)
+        }
+    }
 }
-
-
-

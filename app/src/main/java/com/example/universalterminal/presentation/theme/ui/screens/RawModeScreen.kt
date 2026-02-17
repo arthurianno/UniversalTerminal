@@ -3,7 +3,8 @@ package com.example.universalterminal.presentation.theme.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -13,23 +14,44 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.platform.LocalDensity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.universalterminal.presentation.theme.ui.RawModeViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RawModeScreen(
-    onNavigateBack: () -> Unit, // This will now be used
+    onNavigateBack: () -> Unit,
     viewModel: RawModeViewModel = hiltViewModel()
 ) {
     var responseData by remember { mutableStateOf<List<ConfigData>>(emptyList()) }
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val lazyListState = rememberLazyListState()
+    var scrollToIndex by remember { mutableStateOf<Int?>(null) }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val density = LocalDensity.current
+    val imeInsets = WindowInsets.ime // Получаем информацию о клавиатуре
+
+    LaunchedEffect(scrollToIndex) {
+        scrollToIndex?.let { index ->
+            lazyListState.animateScrollToItem(index, scrollOffset = -100)
+            scrollToIndex = null
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.readResponseFlow.collectLatest { data ->
@@ -70,10 +92,10 @@ fun RawModeScreen(
         ) {
             Column(
                 modifier = Modifier
-                    .padding(16.dp) // Consistent padding like BootModeScreen
+                    .padding(16.dp)
                     .fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp) // Add spacing between elements
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Button(
                     onClick = { viewModel.tryingToSendCommands(forModify = false) },
@@ -92,7 +114,6 @@ fun RawModeScreen(
                     }
                 }
 
-                // Show "Apply Changes" button only if there are modified items and data is present
                 if (responseData.isNotEmpty() && responseData.any { it.isModified }) {
                     Button(
                         onClick = { viewModel.tryingToSendCommands(forModify = true, modifiedData = responseData) },
@@ -112,20 +133,31 @@ fun RawModeScreen(
                     }
                 }
 
-                // Show the config list only if there is data
                 if (responseData.isNotEmpty()) {
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = with(density) { imeInsets.getBottom(density).toDp() }), // Динамический отступ для клавиатуры
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        state = lazyListState
                     ) {
-                        items(responseData) { data ->
+                        itemsIndexed(responseData) { index, data ->
                             ConfigCard(
                                 data = data,
                                 onValueChange = { newValue ->
-                                    responseData = responseData.map {
+                                    val currentItem = responseData.find { it.address == data.address }!!
+                                    val wasNotModified = !currentItem.isModified
+                                    val updatedData = responseData.map {
                                         if (it.address == data.address) it.copy(newValue = newValue) else it
                                     }
-                                }
+                                    responseData = updatedData
+                                    val isNowModified = newValue != currentItem.value
+                                    if (wasNotModified && isNowModified) {
+                                        scrollToIndex = index
+                                    }
+                                },
+                                index = index,
+                                lazyListState = lazyListState
                             )
                         }
                     }
@@ -135,8 +167,42 @@ fun RawModeScreen(
     }
 }
 
+
 @Composable
-fun ConfigCard(data: ConfigData, onValueChange: (String) -> Unit) {
+fun ConfigCard(
+    data: ConfigData,
+    onValueChange: (String) -> Unit,
+    index: Int,
+    lazyListState: LazyListState
+) {
+    var isError by rememberSaveable { mutableStateOf(false) }
+    var isFocused by rememberSaveable { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val interactionSource = remember { MutableInteractionSource() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val density = LocalDensity.current
+    val imeInsets = WindowInsets.ime
+
+    LaunchedEffect(isError) {
+        if (isError) {
+            delay(500)
+            isError = false
+        }
+    }
+
+    LaunchedEffect(isFocused) {
+        if (isFocused) {
+            keyboardController?.show()
+            delay(300) // Ждем, пока клавиатура появится
+            // Прокручиваем к элементу с учетом высоты клавиатуры
+            val keyboardHeight = with(density) { imeInsets.getBottom(density).toDp() }.value.toInt()
+            lazyListState.animateScrollToItem(
+                index = index,
+                scrollOffset = -keyboardHeight - 100 // Отступ для клавиатуры + дополнительный отступ сверху
+            )
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -181,21 +247,26 @@ fun ConfigCard(data: ConfigData, onValueChange: (String) -> Unit) {
             Spacer(modifier = Modifier.height(12.dp))
 
             if (data.isEditable) {
-                var textValue by remember {
+                var textValue by rememberSaveable {
                     mutableStateOf(
                         when (data.type) {
-                            "UINT32_HEX" -> data.newValue ?: data.value.removePrefix("0x").toUInt(16).toString() // Show decimal for editing
-                            "TIMESTAMP" -> data.newValue ?: data.value // Keep as is for date
-                            "BITWISE" -> data.newValue ?: data.value // Keep binary string
+                            "UINT32_HEX" -> data.newValue ?: data.value.removePrefix("0x").toUInt(16).toString()
+                            "TIMESTAMP" -> data.newValue ?: data.value
+                            "BITWISE" -> data.newValue ?: data.value
                             else -> data.newValue ?: data.value
                         }
                     )
                 }
+
                 OutlinedTextField(
                     value = textValue,
                     onValueChange = { newText ->
-                        textValue = newText
-                        onValueChange(newText)
+                        if (data.name == "Серийный номер устройства" && newText.length > 11) {
+                            isError = true
+                        } else {
+                            textValue = newText
+                            onValueChange(newText)
+                        }
                     },
                     label = {
                         Text(
@@ -203,32 +274,41 @@ fun ConfigCard(data: ConfigData, onValueChange: (String) -> Unit) {
                                 "UINT32_HEX" -> "Value (decimal)"
                                 "TIMESTAMP" -> "Value (yyyy-MM-dd HH:mm:ss)"
                                 "BITWISE" -> "Value (32-bit binary)"
+                                "Char[]" -> if (data.name == "Серийный номер устройства") "Value (max 11 chars)" else "Value"
                                 else -> "Value"
                             }
                         )
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .height(56.dp)
+                        .focusRequester(focusRequester)
+                        .onFocusChanged { focusState ->
+                            isFocused = focusState.isFocused
+                        },
                     textStyle = MaterialTheme.typography.bodyMedium,
                     singleLine = true,
                     enabled = data.isEditable,
+                    isError = isError,
                     keyboardOptions = KeyboardOptions.Default.copy(
                         keyboardType = when (data.type) {
                             "FLOAT" -> KeyboardType.Decimal
                             "UINT32", "UINT32_HEX", "INT32" -> KeyboardType.Number
-                            "TIMESTAMP" -> KeyboardType.Text // Allow free text for date
-                            "BITWISE" -> KeyboardType.Text // Allow binary input
+                            "TIMESTAMP" -> KeyboardType.Text
+                            "BITWISE" -> KeyboardType.Text
                             else -> KeyboardType.Text
                         }
                     ),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        errorBorderColor = MaterialTheme.colorScheme.error,
                         cursorColor = MaterialTheme.colorScheme.primary,
                         focusedLabelColor = MaterialTheme.colorScheme.primary,
-                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        errorLabelColor = MaterialTheme.colorScheme.error
+                    ),
+                    interactionSource = interactionSource
                 )
             } else {
                 Row(

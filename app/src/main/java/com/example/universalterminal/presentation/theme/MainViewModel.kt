@@ -1,113 +1,150 @@
 package com.example.universalterminal.presentation.theme
 
 import android.Manifest
-import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
 import android.content.Context
-import android.location.LocationManager
+import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
-import androidx.annotation.RequiresApi
-import androidx.compose.runtime.mutableStateListOf
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.universalterminal.domain.entities.BleDevice
+import com.example.universalterminal.domain.repository.DeviceWorkingRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
-class MainViewModel @Inject constructor() : ViewModel() {
+@HiltViewModel
+class MainViewModel @Inject constructor(
+    private val deviceWorkingRepository: DeviceWorkingRepository
+) : ViewModel() {
 
-    private val _permissionStatus = MutableStateFlow<Map<String, Boolean>>(emptyMap())
-    val permissionStatus: StateFlow<Map<String, Boolean>> = _permissionStatus.asStateFlow()
-
-    val visiblePermissionDialogQueue = mutableStateListOf<String>()
     private val _allPermissionsGranted = MutableStateFlow(false)
     val allPermissionsGranted: StateFlow<Boolean> = _allPermissionsGranted.asStateFlow()
 
-    private val _isBluetoothEnabled = MutableStateFlow(true)
-    val isBluetoothEnabled: StateFlow<Boolean> = _isBluetoothEnabled.asStateFlow()
-
-    private val _isLocationEnabled = MutableStateFlow(true)
-    val isLocationEnabled: StateFlow<Boolean> = _isLocationEnabled.asStateFlow()
+    private val _visiblePermissionDialogQueue = MutableStateFlow<List<String>>(emptyList())
+    val visiblePermissionDialogQueue: StateFlow<List<String>> = _visiblePermissionDialogQueue.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    // Храним контекст для проверки (будет передан из MainActivity)
-    private var appContext: Context? = null
+    private val _lastConnectedDevice = MutableStateFlow<BleDevice?>(null)
+    val lastConnectedDevice: StateFlow<BleDevice?> = _lastConnectedDevice.asStateFlow()
+
+    private var context: Context? = null
 
     init {
-        // Проверка будет запускаться только после установки контекста
-    }
-
-    fun setContext(context: Context) {
-        appContext = context.applicationContext
         viewModelScope.launch {
-            while (true) {
-                checkBluetoothAndLocationStatus()
-                kotlinx.coroutines.delay(5000) // Проверка каждые 5 секунд
+            deviceWorkingRepository.getLastConnectedDevice().collect { device ->
+                Log.e("MainViewModel", "Emitting device23: $device")
+                _lastConnectedDevice.value = device
             }
         }
     }
 
-    @SuppressLint("MissingPermission")
-    fun checkBluetoothAndLocationStatus() {
-        val context = appContext ?: return // Если контекст не установлен, ничего не делаем
+    fun setContext(context: Context) {
+        this.context = context
+        checkInitialPermissions()
+        //refreshLastConnectedDevice()
+    }
 
-        // Проверка Bluetooth
-        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-        val isBluetoothOn = bluetoothAdapter?.isEnabled == true
-        _isBluetoothEnabled.value = isBluetoothOn
-        Log.d("MainViewModel", "Bluetooth enabled: $isBluetoothOn")
-
-        // Проверка геолокации
-        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-        val isGpsEnabled = locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true
-        val isNetworkEnabled = locationManager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true
-        val isLocationOn = isGpsEnabled || isNetworkEnabled
-        _isLocationEnabled.value = isLocationOn
-        Log.d("MainViewModel", "GPS enabled: $isGpsEnabled, Network enabled: $isNetworkEnabled, Location on: $isLocationOn")
-
-        // Формирование сообщения об ошибке
-        val errors = mutableListOf<String>()
-        if (!isBluetoothOn) errors.add("Bluetooth отключен. Пожалуйста, включите Bluetooth.")
-        if (!isLocationOn) errors.add("Геолокация отключена. Пожалуйста, включите геолокацию.")
-
-        _errorMessage.value = if (errors.isNotEmpty()) {
-            "Упс, что-то пошло не так!\n" + errors.joinToString("\n")
+    fun checkBlePermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            checkPermissions(
+                arrayOf(
+                    Manifest.permission.BLUETOOTH_SCAN,
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                )
+            )
         } else {
-            null
+            checkPermissions(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                )
+            )
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-    fun dismissDialog() {
-        if (visiblePermissionDialogQueue.isNotEmpty()) {
-            visiblePermissionDialogQueue.removeLast()
+    suspend fun refreshLastConnectedDevice(): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val device = deviceWorkingRepository.getLastConnectedDevice().first()
+                Log.d("MainViewModel", "Retrieved device: $device")
+                _lastConnectedDevice.value = device
+                device?.name // Возвращаем имя устройства или null
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error refreshing last connected device", e)
+                null
+            }
+        }
+    }
+
+
+    private fun checkInitialPermissions() {
+        context?.let { ctx ->
+            val permissionsToCheck = arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+            checkPermissions(permissionsToCheck)
+        } ?: run {
+            Log.e("MainViewModel", "Context is null during permission check")
+            _errorMessage.value = "Контекст приложения недоступен"
+        }
+    }
+
+    private fun checkPermissions(permissionsToCheck: Array<String>) {
+        context?.let { ctx ->
+            val deniedPermissions = permissionsToCheck.filter {
+                ContextCompat.checkSelfPermission(ctx, it) != PackageManager.PERMISSION_GRANTED
+            }
+            viewModelScope.launch(Dispatchers.Main) {
+                _visiblePermissionDialogQueue.value = deniedPermissions
+                _allPermissionsGranted.value = deniedPermissions.isEmpty()
+                if (deniedPermissions.isNotEmpty()) {
+                    Log.d("MainViewModel", "Permissions denied: $deniedPermissions")
+                } else {
+                    Log.d("MainViewModel", "All required permissions granted")
+                }
+            }
         }
     }
 
     fun onPermissionResult(permission: String, isGranted: Boolean) {
-        val currentStatus = _permissionStatus.value.toMutableMap()
-        currentStatus[permission] = isGranted
-        _permissionStatus.value = currentStatus
-
-        if (!isGranted && !visiblePermissionDialogQueue.contains(permission)) {
-            visiblePermissionDialogQueue.add(permission)
-        } else if (isGranted) {
-            visiblePermissionDialogQueue.remove(permission)
+        viewModelScope.launch(Dispatchers.Main) {
+            val currentQueue = _visiblePermissionDialogQueue.value.toMutableList()
+            if (!isGranted && !currentQueue.contains(permission)) {
+                currentQueue.add(permission)
+            } else if (isGranted && currentQueue.contains(permission)) {
+                currentQueue.remove(permission)
+            }
+            _visiblePermissionDialogQueue.value = currentQueue
+            _allPermissionsGranted.value = currentQueue.isEmpty()
+            Log.d("MainViewModel", "Permission $permission granted: $isGranted, queue: $currentQueue")
+            if (_allPermissionsGranted.value) {
+                //refreshLastConnectedDevice()
+            }
         }
-
-        _allPermissionsGranted.value = currentStatus.all { it.value }
     }
 
-    fun getDeniedPermissions(): List<String> {
-        return _permissionStatus.value
-            .filter { !it.value }
-            .keys
-            .toList()
+    fun dismissDialog(permission: String? = null) {
+        viewModelScope.launch(Dispatchers.Main) {
+            val currentQueue = _visiblePermissionDialogQueue.value.toMutableList()
+            if (permission != null && currentQueue.contains(permission)) {
+                currentQueue.remove(permission)
+            } else {
+                currentQueue.removeLastOrNull()
+            }
+            _visiblePermissionDialogQueue.value = currentQueue
+            _allPermissionsGranted.value = currentQueue.isEmpty()
+            Log.d("MainViewModel", "Dialog dismissed, queue: $currentQueue")
+        }
     }
 
     fun clearErrorMessage() {

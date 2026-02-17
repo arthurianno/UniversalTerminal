@@ -1,9 +1,12 @@
 package com.example.universalterminal.data.BLE
 
+import android.Manifest
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import android.content.Context
 import android.util.Log
+import androidx.annotation.RequiresPermission
 import com.example.universalterminal.data.managers.BluetoothConstants
 import com.example.universalterminal.data.managers.BluetoothConstants.BOOT_MODE_START
 import com.example.universalterminal.data.managers.BluetoothConstants.CONFIGURATION_CMD
@@ -15,12 +18,17 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import no.nordicsemi.android.ble.BleManager
+import no.nordicsemi.android.ble.ConnectionPriorityRequest
+import no.nordicsemi.android.ble.PhyRequest
+import no.nordicsemi.android.ble.annotation.BondState
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
@@ -32,6 +40,9 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
     private var controlResponse: BluetoothGattCharacteristic? = null
     private var successfulOperationsCount: Int = 0
 
+    private val _bondState = MutableStateFlow<Int>(BluetoothDevice.BOND_NONE)
+    val bondState: Flow<Int> = _bondState.asStateFlow()
+
     override fun isRequiredServiceSupported(gatt: BluetoothGatt): Boolean {
         gatt.getService(UART_SERVICE_UUID)?.let { service ->
             controlRequest = service.getCharacteristic(UART_RX_CHARACTERISTIC_UUID)
@@ -40,48 +51,74 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
         return controlRequest != null && controlResponse != null
     }
 
+    @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
     override fun initialize() {
         super.initialize()
-        requestMtu(247).enqueue()
+        requestConnectionPriority(ConnectionPriorityRequest.CONNECTION_PRIORITY_HIGH).enqueue()
+        requestMtu(247).fail { device, status ->
+            Log.e("Ble", "Failed to request MTU: $status")
+
+        }.enqueue()
+        // Проверяем состояние бондинга
+        if (bluetoothDevice?.bondState != BluetoothDevice.BOND_BONDED) {
+            Log.d("Ble", "Initiating bonding for ${bluetoothDevice?.address}")
+            createBond()
+                .done {
+                    _bondState.value = BluetoothDevice.BOND_BONDED
+                    Log.d("Ble", "Bonding successful for ${bluetoothDevice?.address}")
+                }
+                .fail { device, status ->
+                    _bondState.value = BluetoothDevice.BOND_NONE
+                    Log.e("Ble", "Bonding failed for ${device.address}, status: $status")
+                }
+                .enqueue()
+        } else {
+            Log.d("Ble", "Device ${bluetoothDevice?.address} already bonded")
+            _bondState.value = BluetoothDevice.BOND_BONDED
+        }
     }
 
     override fun onServicesInvalidated() {
         super.onServicesInvalidated()
         controlRequest = null
         controlResponse = null
+        _bondState.value = BluetoothDevice.BOND_NONE
+        // Не отменяем регистрацию BroadcastReceiver, так как он нужен на протяжении жизни объекта
         close()
     }
 
 
-    suspend fun connectToDevice(device : BleDevice): Boolean = withContext(Dispatchers.IO){
+
+
+    suspend fun connectToDevice(device: BleDevice): Boolean = withContext(Dispatchers.IO) {
         try {
-            withTimeout(10000){
+            withTimeout(10_000) {
                 connect(device.device)
+                    .usePreferredPhy(PhyRequest.PHY_LE_1M_MASK)
                     .retry(3, 100)
                     .useAutoConnect(false)
                     .await()
             }
             true
-        } catch (e: CancellationException){
-           close()
-           throw e
-        }catch (e:Exception){
-            Log.e("BleManagerConnect", "Error connecting to device", e)
+        } catch (e: CancellationException) {
+            close()
+            throw e
+        } catch (e: Exception) {
+            Log.e("BleManagerConnect", "Error connecting to device ${device.address}: ${e.message}")
             false
         }
     }
-
     suspend fun disconnectToDevice(): Boolean = withContext(Dispatchers.IO) {
         try {
-            withTimeout(10000) {
+            withTimeout(10_000) {
                 disconnect().await()
             }
             true
-        }catch (e: CancellationException){
+        } catch (e: CancellationException) {
             close()
             throw e
-        }catch (e: Exception){
-            Log.e("BleManagerDisconnect", "Error disconnecting from device", e)
+        } catch (e: Exception) {
+            Log.e("BleManagerDisconnect", "Error disconnecting from device: ${e.message}")
             false
         }
     }

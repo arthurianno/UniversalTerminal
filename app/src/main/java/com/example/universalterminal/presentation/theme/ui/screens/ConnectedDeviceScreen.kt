@@ -1,6 +1,6 @@
-// Updated ConnectedDeviceScreen.kt
 package com.example.universalterminal.presentation.theme.ui.screens
 
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,6 +25,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -32,6 +37,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.universalterminal.presentation.theme.MainViewModel
+import kotlinx.coroutines.delay
 
 data class ModuleItem(
     val name: String,
@@ -42,8 +49,19 @@ data class ModuleItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectedDeviceScreen(
-    onNavigate: (String) -> Unit = {}
+    viewModel: MainViewModel,
+    onNavigate
+
+    : (String) -> Unit = {}
 ) {
+    // Состояние для хранения имени устройства
+    var deviceName by remember { mutableStateOf<String?>(null) }
+
+    // Вызов suspend-функции в LaunchedEffect
+    LaunchedEffect(Unit) {
+        deviceName = viewModel.refreshLastConnectedDevice() ?: "No Device Connected"
+    }
+
     val modules = listOf(
         ModuleItem("Режим BOOT", "boot_mode", Icons.Default.Build),
         ModuleItem("Режим RAW", "raw_mode", Icons.Default.Settings),
@@ -53,13 +71,14 @@ fun ConnectedDeviceScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Connected Device") },
+                title = { Text(deviceName ?: "Loading...") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             )
-        }
+        },
+        modifier = Modifier
     ) { paddingValues ->
         Column(
             modifier = Modifier

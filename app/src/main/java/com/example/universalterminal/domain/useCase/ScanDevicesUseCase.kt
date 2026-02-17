@@ -2,11 +2,12 @@ package com.example.universalterminal.domain.useCase
 
 import com.example.universalterminal.domain.entities.BleDevice
 import com.example.universalterminal.domain.repository.BleRepository
+import com.example.universalterminal.presentation.theme.ui.ScanMode
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
 class ScanDevicesUseCase @Inject constructor(private val repository: BleRepository) {
-    suspend operator fun invoke(): Flow<Set<BleDevice>> {
-        return repository.scanDevices()
+    suspend operator fun invoke(scanMode: ScanMode): Flow<Set<BleDevice>> {
+        return repository.scanDevices(scanMode)
     }
 }

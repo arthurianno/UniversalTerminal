@@ -64,9 +64,12 @@ class TerminalViewModel @Inject constructor(
             }
 
             val savedPin = deviceWorkingRepository.getDevicePassword(device.device.address).first()
+            Log.e("Check pass0","$savedPin")
             if (savedPin != null) {
                 _terminalState.update { it.copy(responses = it.responses + "Sending PIN...") }
+                Log.e("Check pass1","$savedPin")
                 val pinResponse = bleRepository.sendCommand("pin.$savedPin").first()
+                Log.e("Check pass2","$pinResponse")
                 val responseStr = String(pinResponse, Charsets.UTF_8)
                 if (responseStr == "pin.error") {
                     _terminalState.update {
@@ -75,15 +78,20 @@ class TerminalViewModel @Inject constructor(
                     bleRepository.disconnectFromDevice()
                     return
                 } else if (responseStr == "pin.ok") {
+                    Log.e("Check pass3","$pinResponse")
                     _terminalState.update { it.copy(responses = it.responses + "PIN accepted") }
                 }
             }
         }
 
         _terminalState.update { it.copy(responses = it.responses + "> $command") }
-        val response = bleRepository.sendCommand(command).first() // Берем только первый ответ
+        val response = bleRepository.sendCommand(command).first()
         val responseStr = String(response, Charsets.UTF_8)
         _terminalState.update { it.copy(responses = it.responses + responseStr) }
+    }
+
+    fun clearTerminal() {
+        _terminalState.update { it.copy(responses = emptyList()) }
     }
 }
 
