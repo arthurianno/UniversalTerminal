@@ -209,7 +209,9 @@ class BootModeViewModel @Inject constructor(
 
             try {
                 updateFirmware(firmware)
-                _firmwareUpdateState.value = FirmwareUpdateState.Success
+                if (_firmwareUpdateState.value is FirmwareUpdateState.Updating) {
+                    _firmwareUpdateState.value = FirmwareUpdateState.Success
+                }
             } catch (e: Exception) {
                 _firmwareUpdateState.value = FirmwareUpdateState.Error(e.message ?: "Unknown error")
             } finally {
