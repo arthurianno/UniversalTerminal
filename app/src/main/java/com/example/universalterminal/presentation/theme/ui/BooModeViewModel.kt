@@ -218,22 +218,56 @@ class BootModeViewModel @Inject constructor(
         }
     }
     private suspend fun updateFirmware(firmware: FirmwareFile) {
-        if (isDeviceConnectedUseCase.invoke()) {
-            if (_deviceInfo.value?.deviceInfo?.model.equals("WCH")){
-            // Implementation for updating firmware
+        if (!isDeviceConnectedUseCase.invoke()) {
+            Log.e("ViewModel", "Device is not connected")
+            val currentDevice = _deviceInfo.value ?: run {
+                _firmwareUpdateState.value = FirmwareUpdateState.Error("No selected device")
+                _isUpdateButtonEnabled.value = true
+                return
+            }
+
+            val connected = connectToDeviceUseCase.invoke(currentDevice)
+            if (!connected) {
+                _firmwareUpdateState.value = FirmwareUpdateState.Error("Connection failed")
+                _isUpdateButtonEnabled.value = true
+                return
+            }
+
+            val pinCommand = when (firmware.type) {
+                FirmwareType.NORDIC -> {
+                    val savedPin = getDevicePasswordUseCase.invoke(currentDevice.address).first()
+                    if (savedPin.isNullOrBlank()) {
+                        _firmwareUpdateState.value = FirmwareUpdateState.Error("Device PIN is missing")
+                        _isUpdateButtonEnabled.value = true
+                        return
+                    }
+                    "pin.$savedPin"
+                }
+                FirmwareType.WCH -> MASTER_PIN
+            }
+
+            val decodedResponse = String(sendCommandUseCase.invoke(pinCommand), Charsets.UTF_8)
+            Log.e("ViewModel", "PIN Response: $decodedResponse")
+            if (!decodedResponse.contains("pin.ok")) {
+                _isUpdateButtonEnabled.value = true
+                return
+            }
+        }
+
+        performFirmwareUpdateWhenConnected(firmware)
+    }
+
+    private suspend fun performFirmwareUpdateWhenConnected(firmware: FirmwareFile) {
+        if (_deviceInfo.value?.deviceInfo?.model.equals("WCH")) {
             Log.d(TAG, "Updating firmware: ${firmware.fileName}, type: ${firmware.type}")
             val (binData, datData) = processZipUseCase.invoke(firmware.filePath).getOrThrow()
             Log.d(
                 "ViewModel",
-                "BinData size: ${binData.size}, first few bytes: ${
-                    binData.take(10).map { it.toInt() }
-                }"
+                "BinData size: ${binData.size}, first few bytes: ${binData.take(10).map { it.toInt() }}"
             )
             Log.d(
                 "ViewModel",
-                "DatData size: ${datData.size}, first few bytes: ${
-                    datData.take(10).map { it.toInt() }
-                }"
+                "DatData size: ${datData.size}, first few bytes: ${datData.take(10).map { it.toInt() }}"
             )
             val decodedResponse = String(sendCommandUseCase.invoke("boot"), Charsets.UTF_8)
             Log.e("ViewModel", "Response: $decodedResponse")
@@ -245,11 +279,11 @@ class BootModeViewModel @Inject constructor(
                         delay(1000L)
                         writeConfigurationUseCase.invoke(datData).collect { configResult ->
                             Log.e("ViewModel", "Configuration: $configResult")
-                            if (configResult){
+                            if (configResult) {
                                 _firmwareUpdateState.value = FirmwareUpdateState.Success
                                 _isUpdateButtonEnabled.value = true
                                 return@collect
-                            }else{
+                            } else {
                                 _firmwareUpdateState.value = FirmwareUpdateState.Error("Firmware update failed")
                                 _isUpdateButtonEnabled.value = true
                                 return@collect
@@ -261,72 +295,34 @@ class BootModeViewModel @Inject constructor(
                 _firmwareUpdateState.value = FirmwareUpdateState.BootError("Boot failed")
                 _isUpdateButtonEnabled.value = true
             }
-            }else{
-                Log.d(TAG, "Updating firmware: ${firmware.fileName}, type: ${firmware.type}")
-                val decodedResponse = String(sendCommandUseCase.invoke("boot"), Charsets.UTF_8)
-                Log.e("ViewModel", "Response: $decodedResponse")
-                if (decodedResponse.contains("boot.ok")) {
-                    val deviceDfuAddress = _deviceInfo.value?.address?.toDfuAddress()
-                    Log.e("ViewModel", "DFU Address: $deviceDfuAddress")
+        } else {
+            Log.d(TAG, "Updating firmware: ${firmware.fileName}, type: ${firmware.type}")
+            val decodedResponse = String(sendCommandUseCase.invoke("boot"), Charsets.UTF_8)
+            Log.e("ViewModel", "Response: $decodedResponse")
+            if (decodedResponse.contains("boot.ok")) {
+                val deviceDfuAddress = _deviceInfo.value?.address?.toDfuAddress()
+                Log.e("ViewModel", "DFU Address: $deviceDfuAddress")
 
-                    val scannerDevice =
-                        findDeviceForDFUUpdate(deviceDfuAddress.toString()) ?: return
-                    Log.e("ViewModel", "Scanner Device: $scannerDevice")
+                val scannerDevice =
+                    findDeviceForDFUUpdate(deviceDfuAddress.toString()) ?: return
+                Log.e("ViewModel", "Scanner Device: $scannerDevice")
 
-                    stopScanDevicesUseCase.invoke()
-                    loadDfuUseCase.invoke(scannerDevice.address, firmware.filePath).collect {
-                        Log.e("ViewModel", "DFU: $it")
-                        if (it){
-                            _firmwareUpdateState.value = FirmwareUpdateState.Success
-                            _isUpdateButtonEnabled.value = true
-                            return@collect
-                        }else{
-                            _firmwareUpdateState.value = FirmwareUpdateState.Error("Firmware update failed")
-                            _isUpdateButtonEnabled.value = true
-                            return@collect
-                        }
-                    }
-                }else {
-                    _firmwareUpdateState.value = FirmwareUpdateState.BootError("Boot failed")
-                    _isUpdateButtonEnabled.value = true
-                }
-            }
-        }else{
-            Log.e("ViewModel", "Device is not connected")
-            val connected = connectToDeviceUseCase.invoke(_deviceInfo.value!!)
-            if (connected){
-                when (firmware.type) {
-                    FirmwareType.NORDIC -> {
-                        val savedPin = getDevicePasswordUseCase.invoke(_deviceInfo.value!!.address).first()
-                        if (savedPin.isNullOrBlank()) {
-                            _firmwareUpdateState.value = FirmwareUpdateState.Error("Device PIN is missing")
-                            _isUpdateButtonEnabled.value = true
-                            return
-                        }
-                        val decodedResponse = String(
-                            sendCommandUseCase.invoke("pin.$savedPin"),
-                            Charsets.UTF_8
-                        )
-                        Log.e("ViewModel", "PIN Response: $decodedResponse")
-                        if (decodedResponse.contains("pin.ok")){
-                            updateFirmware(firmware)
-                        }else{
-                            _isUpdateButtonEnabled.value = true
-                        }
-                    }
-                    FirmwareType.WCH -> {
-                        val decodedResponse = String(
-                            sendCommandUseCase.invoke(MASTER_PIN),
-                            Charsets.UTF_8
-                        )
-                        Log.e("ViewModel", "PIN Response: $decodedResponse")
-                        if (decodedResponse.contains("pin.ok")){
-                            updateFirmware(firmware)
-                        }else{
-                            _isUpdateButtonEnabled.value = true
-                        }
+                stopScanDevicesUseCase.invoke()
+                loadDfuUseCase.invoke(scannerDevice.address, firmware.filePath).collect {
+                    Log.e("ViewModel", "DFU: $it")
+                    if (it) {
+                        _firmwareUpdateState.value = FirmwareUpdateState.Success
+                        _isUpdateButtonEnabled.value = true
+                        return@collect
+                    } else {
+                        _firmwareUpdateState.value = FirmwareUpdateState.Error("Firmware update failed")
+                        _isUpdateButtonEnabled.value = true
+                        return@collect
                     }
                 }
+            } else {
+                _firmwareUpdateState.value = FirmwareUpdateState.BootError("Boot failed")
+                _isUpdateButtonEnabled.value = true
             }
         }
     }
