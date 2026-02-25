@@ -1,8 +1,8 @@
 package com.example.universalterminal.presentation.theme.ui.screens
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.content.Context
 import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -58,15 +59,17 @@ fun BleScanScreen(
     val scope = rememberCoroutineScope()
     val pinError by viewModel.pinError.collectAsState()
     var selectedTabIndex by remember { mutableStateOf(0) }
+    val context = LocalContext.current
 
-    // Получаем bonded устройства
-    val bondedDevices = remember {
+    val bondedDevices = remember(context) {
         derivedStateOf {
-            BluetoothAdapter.getDefaultAdapter()?.bondedDevices?.map { device ->
+            val bluetoothManager =
+                context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            bluetoothManager?.adapter?.bondedDevices?.map { device ->
                 BleDevice(
                     name = device.name ?: "Unknown Device",
                     address = device.address,
-                    rssi = 0, // RSSI недоступен для bonded устройств без сканирования
+                    rssi = 0,
                     device = device,
                     deviceInfo = null
                 )
