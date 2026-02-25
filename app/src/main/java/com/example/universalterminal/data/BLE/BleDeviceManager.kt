@@ -220,7 +220,7 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
 
 
 
-    suspend fun sendCommand(command: String): Flow<ByteArray> = flow {
+    suspend fun sendCommand(command: String): ByteArray = withContext(Dispatchers.IO) {
         if (!isConnected || controlRequest == null) {
             Log.d("BleDeviceManager", "Connection state: $isConnected, controlRequest: $controlRequest")
             throw IllegalStateException("Device is not connected")
@@ -240,49 +240,15 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
         enableNotifications(controlResponse!!).enqueue()
 
         try {
-            if (command == "infoCommand") {
-                // Send version command first
-                Log.d("BleDeviceManager", "Writing command: version")
-                writeCharacteristic(
-                    controlRequest,
-                    "version".toByteArray(),
-                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                ).enqueue()
+            Log.d("BleDeviceManager", "Writing characteristic: $command")
+            writeCharacteristic(
+                controlRequest,
+                command.toByteArray(),
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            ).enqueue()
 
-                // Wait for the version response
-                val versionResponse = responseChannel.receive()
-                emit(versionResponse)
-
-                // Send serial command next
-                Log.d("BleDeviceManager", "Writing command: serial")
-                writeCharacteristic(
-                    controlRequest,
-                    "serial".toByteArray(),
-                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                ).enqueue()
-
-                // Continue collecting responses as normal
-                for (response in responseChannel) {
-                    val decodedResponse = String(response, Charsets.UTF_8)
-                    Log.d("BleDeviceManager", "Emitting decoded response: $decodedResponse")
-                    emit(response)
-                }
-            } else {
-                // Original behavior for non-infoCommand
-                Log.d("BleDeviceManager", "Writing characteristic: $command")
-                writeCharacteristic(
-                    controlRequest,
-                    command.toByteArray(),
-                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                ).enqueue()
-
-                Log.d("BleDeviceManager", "Starting to collect responses...")
-                for (response in responseChannel) {
-                    val decodedResponse = String(response, Charsets.UTF_8)
-                    Log.d("BleDeviceManager", "Emitting decoded response: $decodedResponse")
-                    emit(response)
-                }
-            }
+            Log.d("BleDeviceManager", "Waiting for response...")
+            withTimeout(5_000) { responseChannel.receive() }
         } finally {
             Log.d("BleDeviceManager", "Disabling notifications...")
             disableNotifications(controlResponse!!).enqueue()

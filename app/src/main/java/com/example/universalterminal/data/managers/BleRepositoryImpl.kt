@@ -14,14 +14,16 @@ import com.example.universalterminal.domain.repository.BleRepository
 import com.example.universalterminal.presentation.theme.ui.ScanMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import no.nordicsemi.android.dfu.DfuServiceInitiator
 import no.nordicsemi.android.dfu.DfuServiceListenerHelper
 import java.io.File
@@ -37,99 +39,91 @@ class BleRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context
 ): BleRepository {
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+
     @RequiresApi(Build.VERSION_CODES.O)
     @SuppressLint("MissingPermission")
-    override suspend fun scanDevices(scanMode: ScanMode): Flow<Set<BleDevice>> {
+    override suspend fun scanDevices(scanMode: ScanMode): StateFlow<Set<BleDevice>> {
         stopScanDevices()
         bleScanner.startScan(scanMode)
         Log.i("BleRepository", "Scanning started")
-        Log.i("BleRepository", "Device to rep: ${bleScanner.devicesFlow.value}")
+        Log.i("BleRepository", "Devices: ${bleScanner.devicesFlow.value}")
         return bleScanner.devicesFlow
-
     }
 
-
-
-    override suspend fun stopScanDevices(): Flow<Boolean> {
+    override suspend fun stopScanDevices() {
         bleScanner.stopScan()
-        return bleScanner.isScanning
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
     @SuppressLint("MissingPermission")
-    override suspend fun connectToDevice(device: BleDevice): Flow<Boolean> = flow {
-        // Проверяем, связано ли устройство
+    override suspend fun connectToDevice(device: BleDevice): Boolean {
         val bondedDevices = bluetoothAdapter?.bondedDevices ?: emptySet()
         val bondedDevice = bondedDevices.find { it.address == device.address }
 
         if (bondedDevice != null) {
             Log.i("BleRepository", "Connecting to bonded device ${device.address}")
-            val success = bleDeviceManager.connectToDevice(device.copy(device = bondedDevice))
-            emit(success)
-        } else {
-            Log.i("BleRepository", "Device ${device.address} not bonded, attempting direct connection")
-            // Создаем BluetoothDevice из адреса
-            val bluetoothDevice = bluetoothAdapter?.getRemoteDevice(device.address)
-            if (bluetoothDevice == null) {
-                Log.e("BleRepository", "Failed to create BluetoothDevice for ${device.address}")
-                emit(false)
-                return@flow
-            }
+            return bleDeviceManager.connectToDevice(device.copy(device = bondedDevice))
+        }
 
-            // Пытаемся инициировать связывание
-            if (bluetoothDevice.bondState == BluetoothDevice.BOND_NONE) {
-                Log.i("BleRepository", "Initiating bonding for ${device.address}")
-                val bondResult = bluetoothDevice.createBond()
-                if (!bondResult) {
-                    Log.e("BleRepository", "Failed to initiate bonding for ${device.address}")
-                }
-            }
+        Log.i("BleRepository", "Device ${device.address} not bonded, attempting direct connection")
+        val bluetoothDevice = bluetoothAdapter?.getRemoteDevice(device.address)
+        if (bluetoothDevice == null) {
+            Log.e("BleRepository", "Failed to create BluetoothDevice for ${device.address}")
+            return false
+        }
 
-            // Пытаемся подключиться напрямую
-            val success = bleDeviceManager.connectToDevice(device.copy(device = bluetoothDevice))
-            if (success) {
-                Log.i("BleRepository", "Direct connection successful for ${device.address}")
-                emit(true)
-            } else {
-                Log.w("BleRepository", "Direct connection failed, falling back to scanning")
-                // Если подключение не удалось, запускаем сканирование
-                val scannedDevices = scanDevices(ScanMode.AGGRESSIVE).last()
-                val targetDevice = scannedDevices.find { it.address == device.address }
-                if (targetDevice != null) {
-                    Log.i("BleRepository", "Device ${device.address} found, connecting and initiating bonding")
-                    // Повторно инициируем bonding, если нужно
-                    targetDevice.device?.let { btDevice ->
-                        if (btDevice.bondState == BluetoothDevice.BOND_NONE) {
-                            btDevice.createBond()
-                        }
+        if (bluetoothDevice.bondState == BluetoothDevice.BOND_NONE) {
+            Log.i("BleRepository", "Initiating bonding for ${device.address}")
+            val bondResult = bluetoothDevice.createBond()
+            if (!bondResult) {
+                Log.e("BleRepository", "Failed to initiate bonding for ${device.address}")
+            }
+        }
+
+        val success = bleDeviceManager.connectToDevice(device.copy(device = bluetoothDevice))
+        if (success) {
+            Log.i("BleRepository", "Direct connection successful for ${device.address}")
+            return true
+        }
+
+        Log.w("BleRepository", "Direct connection failed, falling back to scanning")
+        return try {
+            val scannedDevices = scanDevices(ScanMode.AGGRESSIVE)
+            val targetDevice: BleDevice? = withTimeoutOrNull(10_000) {
+                var foundDevice: BleDevice? = null
+                while (foundDevice == null) {
+                    foundDevice = scannedDevices.value.find { it.address == device.address }
+                    if (foundDevice == null) {
+                        delay(300)
                     }
-                    val success = bleDeviceManager.connectToDevice(targetDevice)
-                    emit(success)
-                } else {
-                    Log.e("BleRepository", "Device ${device.address} not found during scan")
-                    emit(false)
                 }
+                foundDevice
             }
-        }
-    }.flowOn(Dispatchers.IO)
 
-    override suspend fun sendCommand(command: String): Flow<ByteArray> {
-        val response = bleDeviceManager.sendCommand(command)
-        Log.i("BleRepository", "Response: ${response.toString()}")
-        return response
-    }
-
-    override suspend fun disconnectFromDevice(): Flow<Boolean> {
-        val disconnection = bleDeviceManager.disconnectToDevice()
-        return if (disconnection){
-            flowOf(true)
-        }else {
-            flowOf(false)
+            if (targetDevice == null) {
+                Log.e("BleRepository", "Device ${device.address} not found during scan")
+                false
+            } else {
+                if (targetDevice.device.bondState == BluetoothDevice.BOND_NONE) {
+                    targetDevice.device.createBond()
+                }
+                bleDeviceManager.connectToDevice(targetDevice)
+            }
+        } finally {
+            stopScanDevices()
         }
     }
 
-    override suspend fun isConnected(): Flow<Boolean> {
-        return flowOf(bleDeviceManager.isConnected)
+    override suspend fun sendCommand(command: String): ByteArray {
+        return bleDeviceManager.sendCommand(command)
+    }
+
+    override suspend fun disconnectFromDevice(): Boolean {
+        return bleDeviceManager.disconnectToDevice()
+    }
+
+    override suspend fun isConnected(): Boolean {
+        return bleDeviceManager.isConnected
     }
 
     override suspend fun loadFirmware(command: ByteArray, fileSize: Int): Flow<Boolean> = flow {

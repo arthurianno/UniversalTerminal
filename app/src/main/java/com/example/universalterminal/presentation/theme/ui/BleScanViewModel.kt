@@ -1,7 +1,6 @@
 package com.example.universalterminal.presentation.theme.ui
 
 import android.Manifest
-import android.bluetooth.BluetoothDevice
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.lifecycle.ViewModel
@@ -18,11 +17,10 @@ import com.example.universalterminal.domain.useCase.SendCommandUseCase
 import com.example.universalterminal.domain.useCase.StopScanDeviceUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -60,6 +58,7 @@ class BleScanViewModel @Inject constructor(
 
     private val _pinError = MutableStateFlow<String?>(null)
     val pinError: StateFlow<String?> = _pinError.asStateFlow()
+    private var scanJob: Job? = null
 
     fun onNavigatedToConnected() {
         _navigateToConnected.value = false
@@ -95,20 +94,22 @@ class BleScanViewModel @Inject constructor(
     }
 
     fun startScan() {
-        viewModelScope.launch {
+        scanJob?.cancel()
+        scanJob = viewModelScope.launch {
             _isScanning.value = true
-            bleScanUseCase.invoke(_scanMode.value).collect { devices ->
+            val devicesFlow = bleScanUseCase.invoke(_scanMode.value)
+            devicesFlow.collect { devices ->
                 _devices.value = devices
             }
-            _isScanning.value = false
         }
     }
 
     fun stopScan() {
         viewModelScope.launch {
-            bleStopScanUseCase.invoke().collect { result ->
-                _isScanning.value = result
-            }
+            scanJob?.cancel()
+            scanJob = null
+            bleStopScanUseCase.invoke()
+            _isScanning.value = false
         }
     }
 
@@ -135,84 +136,69 @@ class BleScanViewModel @Inject constructor(
                 saveLastConnectedDevice.invoke(device)
                 Log.e("Check", "Check last dev $device")
 
-                bleConnectUseCase.invoke(device).collect { isConnected ->
-                    if (isConnected) {
-                        Log.i("ViewModel", "Connected to ${device.address}")
-                        try {
-                            coroutineScope {
-                                // Отправляем PIN-код
-                                bleSendCommandUseCase.invoke("pin.$pin").collect { response ->
-                                    val decodedResponse = String(response, Charsets.UTF_8)
-                                    Log.i("ViewModel", "PIN Response: $decodedResponse")
-                                    when {
-                                        decodedResponse.contains("pin.error") -> {
-                                            _pinError.value = "Invalid PIN code. Please try again."
-                                            _connectionInProgress.value = false
-                                            _connectingDevice.value = null
-                                        }
-                                        decodedResponse.contains("pin.ok") -> {
-                                            // Записываем время успешного подключения
-                                            val endTime = System.currentTimeMillis()
-                                            val connectionTime = endTime - startTime
-                                            Log.i(
-                                                "ConnectionTime",
-                                                "Device ${device.address} connected in $connectionTime ms"
-                                            )
+                val isConnected = bleConnectUseCase.invoke(device)
+                if (isConnected) {
+                    Log.i("ViewModel", "Connected to ${device.address}")
+                    try {
+                        val pinResponse = bleSendCommandUseCase.invoke("pin.$pin")
+                        val decodedResponse = String(pinResponse, Charsets.UTF_8)
+                        Log.i("ViewModel", "PIN Response: $decodedResponse")
+                        when {
+                            decodedResponse.contains("pin.error") -> {
+                                _pinError.value = "Invalid PIN code. Please try again."
+                                _connectionInProgress.value = false
+                                _connectingDevice.value = null
+                            }
+                            decodedResponse.contains("pin.ok") -> {
+                                val endTime = System.currentTimeMillis()
+                                val connectionTime = endTime - startTime
+                                Log.i(
+                                    "ConnectionTime",
+                                    "Device ${device.address} connected in $connectionTime ms"
+                                )
 
-                                            // Сохраняем PIN
-                                            updatePin(pin)
+                                updatePin(pin)
 
-                                            // Получаем данные устройства
-                                            val serialResponse = String(
-                                                bleSendCommandUseCase.invoke("serial").first(),
-                                                Charsets.UTF_8
-                                            )
-                                            val versionResponse = String(
-                                                bleSendCommandUseCase.invoke("version").first(),
-                                                Charsets.UTF_8
-                                            )
-                                            val serialNumberResponse = String(
-                                                bleSendCommandUseCase.invoke("version").first(),
-                                                Charsets.UTF_8
-                                            )
+                                val serialResponse = String(
+                                    bleSendCommandUseCase.invoke("serial"),
+                                    Charsets.UTF_8
+                                )
+                                val versionResponse = String(
+                                    bleSendCommandUseCase.invoke("version"),
+                                    Charsets.UTF_8
+                                )
 
-                                            Log.d("ViewModel", "Serial Response: $serialResponse")
-                                            Log.d("ViewModel", "Version Response: $versionResponse")
+                                Log.d("ViewModel", "Serial Response: $serialResponse")
+                                Log.d("ViewModel", "Version Response: $versionResponse")
 
-                                            // Формируем DeviceInfo
-                                            val deviceInfo = DeviceInfo(
-                                                serialNumber = serialResponse.removePrefix("ser.").trim(),
-                                                version = versionResponse.substringAfter("sw:")
-                                                    .substringBefore(" ").trim(),
-                                                model = determineDeviceType(versionResponse).toString(),
-                                                firmwareVersion = versionResponse,
-                                            )
+                                val deviceInfo = DeviceInfo(
+                                    serialNumber = serialResponse.removePrefix("ser.").trim(),
+                                    version = versionResponse.substringAfter("sw:")
+                                        .substringBefore(" ").trim(),
+                                    model = determineDeviceType(versionResponse).toString(),
+                                    firmwareVersion = versionResponse,
+                                )
 
-                                            Log.d("ViewModel", "Created DeviceInfo: $deviceInfo")
+                                Log.d("ViewModel", "Created DeviceInfo: $deviceInfo")
 
-                                            // Обновляем объект BleDevice
-                                            val updatedDevice = device.copy(
-                                                name = "SatelliteOnline${serialResponse.removePrefix("ser.").takeLast(4)}", // Формируем новое имя
-                                                deviceInfo = deviceInfo
-                                            )
+                                val updatedDevice = device.copy(
+                                    name = "SatelliteOnline${serialResponse.removePrefix("ser.").takeLast(4)}",
+                                    deviceInfo = deviceInfo
+                                )
 
-                                            // Сохраняем информацию об устройстве
-                                            saveDeviceInformationUseCase.invoke(updatedDevice)
-                                            Log.d("ViewModel", "Saved updated device: $updatedDevice")
+                                saveDeviceInformationUseCase.invoke(updatedDevice)
+                                Log.d("ViewModel", "Saved updated device: $updatedDevice")
 
-                                            withContext(Dispatchers.Main) {
-                                                _navigateToConnected.value = true
-                                            }
-                                        }
-                                    }
+                                withContext(Dispatchers.Main) {
+                                    _navigateToConnected.value = true
                                 }
                             }
-                        } catch (e: Exception) {
-                            Log.e("ViewModel", "Error sending commands", e)
                         }
-                    } else {
-                        Log.i("ViewModel", "Not connected")
+                    } catch (e: Exception) {
+                        Log.e("ViewModel", "Error sending commands", e)
                     }
+                } else {
+                    Log.i("ViewModel", "Not connected")
                 }
             } catch (e: Exception) {
                 Log.i("DebugCheck", e.message.toString())
