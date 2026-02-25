@@ -13,9 +13,6 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import javax.inject.Singleton
 
 @Module
@@ -30,15 +27,11 @@ object projectModule {
 
     @Provides
     @Singleton
-    fun provideCoroutineScope(): CoroutineScope {
-        return CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    }
-
-    @Provides
-    @Singleton
-    fun provideBleScanner(bleScannerWrapper: BleScannerWrapper, coroutineScope: CoroutineScope, @ApplicationContext context: Context): BleScanner {
-        return BleScanner(bleScannerWrapper, coroutineScope,context)
+    fun provideBleScanner(
+        bleScannerWrapper: BleScannerWrapper,
+        @ApplicationContext context: Context
+    ): BleScanner {
+        return BleScanner(bleScannerWrapper, context)
     }
 
     @Provides

@@ -10,21 +10,17 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.ParcelUuid
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import com.example.universalterminal.domain.entities.BleDevice
 import com.example.universalterminal.presentation.theme.ui.ScanMode
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 class BleScanner @Inject constructor(
     private val bleScannerWrapper: BleScannerWrapper,
-    private val scope: CoroutineScope,
     private val context: Context
 ) {
 
@@ -66,86 +62,70 @@ class BleScanner @Inject constructor(
             return
         }
 
-        scope.launch {
-            try {
-                val settings = ScanSettings.Builder()
-                    .setScanMode(when (scanMode) {
-                        ScanMode.LOW_POWER -> ScanSettings.SCAN_MODE_LOW_POWER
-                        ScanMode.BALANCED -> ScanSettings.SCAN_MODE_BALANCED
-                        ScanMode.AGGRESSIVE -> ScanSettings.SCAN_MODE_LOW_LATENCY
-                    })
-                    .setReportDelay(0L)  // Немедленный callback
-                    .setLegacy(true)  // Поддержка legacy для старых устройств
-                    .build()  // Убрал лишние: callbackType, numOfMatches, phy — defaults лучше
+        try {
+            val settings = ScanSettings.Builder()
+                .setScanMode(when (scanMode) {
+                    ScanMode.LOW_POWER -> ScanSettings.SCAN_MODE_LOW_POWER
+                    ScanMode.BALANCED -> ScanSettings.SCAN_MODE_BALANCED
+                    ScanMode.AGGRESSIVE -> ScanSettings.SCAN_MODE_LOW_LATENCY
+                })
+                .setReportDelay(0L)
+                .setLegacy(true)
+                .build()
 
-                // Добавляем фильтры для ELTA
-                val filters = listOf(
-                    ScanFilter.Builder()
-                        //.setDeviceName()  // Фильтр по имени
-                        //.setServiceUuid(ParcelUuid.fromString("f0001110-0451-4000-b000-000000000000"))  // Фильтр по UUID
-                        .build()
-                )
+            val filters = listOf(
+                ScanFilter.Builder().build()
+            )
 
-                scanCallback = object : ScanCallback() {
-                    @SuppressLint("MissingPermission")
-                    override fun onScanResult(callbackType: Int, result: ScanResult) {
-                        Log.i("BleScanner", "onScanResult: $result")  // Логируем ВСЕ результаты для отладки
-                        if (result.device.name == "ELTA") {
-                            Log.i("Check NMG", "$result")
+            scanCallback = object : ScanCallback() {
+                @SuppressLint("MissingPermission")
+                override fun onScanResult(callbackType: Int, result: ScanResult) {
+                    val deviceName = result.scanRecord?.deviceName ?: result.device.name ?: "Unknown"
+                    if (deviceName != "Unknown") {
+                        val bleDevice = BleDevice(
+                            name = deviceName,
+                            address = result.device.address,
+                            rssi = result.rssi,
+                            device = result.device
+                        )
+                        val existingIndex = scannedDevices.indexOfFirst { it.address == bleDevice.address }
+                        if (existingIndex >= 0) {
+                            scannedDevices[existingIndex] = bleDevice
+                        } else {
+                            scannedDevices.add(bleDevice)
                         }
-                        if (result.device.name == "SatelliteVoice") {
-                            Log.i("Check SatelliteVoice", "$result")
-                        }
-                        val deviceName = result.scanRecord?.deviceName ?: result.device.name ?: "Unknown"
-                        if (deviceName != "Unknown") {
-                            val bleDevice = BleDevice(
-                                name = deviceName,
-                                address = result.device.address,
-                                rssi = result.rssi,
-                                device = result.device
-                            )
-                            // Обновляем список даже если rssi изменился (если equals не учитывает rssi)
-                            val existingIndex = scannedDevices.indexOfFirst { it.address == bleDevice.address }
-                            if (existingIndex >= 0) {
-                                scannedDevices[existingIndex] = bleDevice  // Обнови rssi
-                            } else {
-                                scannedDevices.add(bleDevice)
-                            }
-                            _devicesFlow.value = scannedDevices.toSet()
-                        }
-                    }
-
-                    override fun onScanFailed(errorCode: Int) {
-                        Log.e("BleScanner", "Scan failed with error code: $errorCode")
-                        stopScan()
+                        _devicesFlow.value = scannedDevices.toSet()
                     }
                 }
 
-                bleScannerWrapper.startScan(scanCallback as ScanCallback, settings, filters)  // Добавил filters
-                _isScanning.value = true
-                Log.i("BleScanner", "Scan started with filters")
-            } catch (e: Exception) {
-                Log.e("BleScanner", "Error starting scan", e)
-                _isScanning.value = false
+                override fun onScanFailed(errorCode: Int) {
+                    Log.e("BleScanner", "Scan failed with error code: $errorCode")
+                    stopScan()
+                }
             }
+
+            bleScannerWrapper.startScan(scanCallback as ScanCallback, settings, filters)
+            _isScanning.value = true
+            Log.i("BleScanner", "Scan started")
+        } catch (e: Exception) {
+            Log.e("BleScanner", "Error starting scan", e)
+            _isScanning.value = false
         }
     }
 
     fun stopScan() {
-        scope.launch {
-            try {
-                scanCallback?.let {
-                    bleScannerWrapper.stopScan(it)
-                    Log.i("BleScanner", "Scan stopped successfully")
-                } ?: Log.w("BleScanner", "No active scan callback to stop")
-                scanCallback = null
-            } catch (e: Exception) {
-                Log.e("BleScanner", "Error stopping scan", e)
-            } finally {
-                _isScanning.value = false
-                scannedDevices.clear()
-                _devicesFlow.value = emptySet()
-            }
+        try {
+            scanCallback?.let {
+                bleScannerWrapper.stopScan(it)
+                Log.i("BleScanner", "Scan stopped successfully")
+            } ?: Log.w("BleScanner", "No active scan callback to stop")
+            scanCallback = null
+        } catch (e: Exception) {
+            Log.e("BleScanner", "Error stopping scan", e)
+        } finally {
+            _isScanning.value = false
+            scannedDevices.clear()
+            _devicesFlow.value = emptySet()
         }
     }
 }

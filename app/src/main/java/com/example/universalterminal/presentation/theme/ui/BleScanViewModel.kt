@@ -71,8 +71,10 @@ class BleScanViewModel @Inject constructor(
     fun setScanMode(mode: ScanMode) {
         _scanMode.value = mode
         if (_isScanning.value) {
-            stopScan()
-            startScan()
+            viewModelScope.launch {
+                stopScanInternal()
+                startScanInternal()
+            }
         }
     }
 
@@ -94,6 +96,14 @@ class BleScanViewModel @Inject constructor(
     }
 
     fun startScan() {
+        viewModelScope.launch { startScanInternal() }
+    }
+
+    fun stopScan() {
+        viewModelScope.launch { stopScanInternal() }
+    }
+
+    private suspend fun startScanInternal() {
         scanJob?.cancel()
         scanJob = viewModelScope.launch {
             _isScanning.value = true
@@ -104,13 +114,11 @@ class BleScanViewModel @Inject constructor(
         }
     }
 
-    fun stopScan() {
-        viewModelScope.launch {
-            scanJob?.cancel()
-            scanJob = null
-            bleStopScanUseCase.invoke()
-            _isScanning.value = false
-        }
+    private suspend fun stopScanInternal() {
+        scanJob?.cancel()
+        scanJob = null
+        bleStopScanUseCase.invoke()
+        _isScanning.value = false
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
