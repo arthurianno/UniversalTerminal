@@ -28,8 +28,8 @@ class DeviceWorkingRepositoryImpl @Inject constructor(
 
     private val bluetoothAdapter by lazy {
         val bluetoothManager =
-            context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        bluetoothManager.adapter
+            context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        bluetoothManager?.adapter
     }
 
     companion object {
@@ -104,8 +104,12 @@ class DeviceWorkingRepositoryImpl @Inject constructor(
                         Log.d(TAG, "Retrieved last connected device: $name, $address, RSSI: $rssi")
 
                         try {
-                            // Проверяем, доступно ли устройство через BluetoothAdapter
-                            bluetoothAdapter.getRemoteDevice(address)
+                            val adapter = bluetoothAdapter
+                            if (adapter == null) {
+                                Log.w(TAG, "Bluetooth adapter is unavailable")
+                                return@withContext null
+                            }
+                            adapter.getRemoteDevice(address)
                             BleDevice(
                                 name = name,
                                 address = address,
