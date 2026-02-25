@@ -54,10 +54,10 @@ class TerminalViewModel @Inject constructor(
     }
 
     suspend fun sendTerminalCommand(device: BleDevice, command: String) {
-        val isConnected = bleRepository.isConnected().first()
+        val isConnected = bleRepository.isConnected()
         if (!isConnected) {
             _terminalState.update { it.copy(responses = it.responses + "Connecting to device...") }
-            val connectSuccess = bleRepository.connectToDevice(device).first()
+            val connectSuccess = bleRepository.connectToDevice(device)
             if (!connectSuccess) {
                 _terminalState.update { it.copy(responses = it.responses + "Connection failed") }
                 return
@@ -68,7 +68,7 @@ class TerminalViewModel @Inject constructor(
             if (savedPin != null) {
                 _terminalState.update { it.copy(responses = it.responses + "Sending PIN...") }
                 Log.e("Check pass1","$savedPin")
-                val pinResponse = bleRepository.sendCommand("pin.$savedPin").first()
+                val pinResponse = bleRepository.sendCommand("pin.$savedPin")
                 Log.e("Check pass2","$pinResponse")
                 val responseStr = String(pinResponse, Charsets.UTF_8)
                 if (responseStr == "pin.error") {
@@ -85,7 +85,7 @@ class TerminalViewModel @Inject constructor(
         }
 
         _terminalState.update { it.copy(responses = it.responses + "> $command") }
-        val response = bleRepository.sendCommand(command).first()
+        val response = bleRepository.sendCommand(command)
         val responseStr = String(response, Charsets.UTF_8)
         _terminalState.update { it.copy(responses = it.responses + responseStr) }
     }

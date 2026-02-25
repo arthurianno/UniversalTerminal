@@ -83,7 +83,7 @@ class RawModeViewModel @Inject constructor(
         }
 
         return try {
-            val connectionResult = connectToDeviceUseCase.invoke(_deviceInfo.value!!).first()
+            val connectionResult = connectToDeviceUseCase.invoke(_deviceInfo.value!!)
             if (connectionResult) {
                 val password = getDevicePasswordUseCase.invoke(_deviceInfo.value!!.address).first()
                 Log.e("RawModeViewModel", "PIN: $password")
@@ -92,7 +92,7 @@ class RawModeViewModel @Inject constructor(
                     return false
                 }
 
-                val response = sendCommandUseCase.invoke("pin.$password").first()
+                val response = sendCommandUseCase.invoke("pin.$password")
                 val decodedResponse = String(response, Charsets.UTF_8)
                 Log.d("RawModeViewModel", "PIN Response: $decodedResponse")
 
@@ -144,7 +144,7 @@ class RawModeViewModel @Inject constructor(
         try {
             // Only send "setraw" if not already in raw mode
             if (!_isRawModeActive.value) {
-                val setRawResponse = sendCommandUseCase.invoke("setraw").first()
+                val setRawResponse = sendCommandUseCase.invoke("setraw")
                 val decodedResponse = String(setRawResponse, Charsets.UTF_8)
                 Log.d("RawModeViewModel", "Setraw response: $decodedResponse")
                 if (decodedResponse.contains("setraw.ok")) {
@@ -354,7 +354,7 @@ class RawModeViewModel @Inject constructor(
                 }
 
                 if (!_isRawModeActive.value) {
-                    val setRawResponse = sendCommandUseCase.invoke("setraw").first()
+                    val setRawResponse = sendCommandUseCase.invoke("setraw")
                     val decodedResponse = String(setRawResponse, Charsets.UTF_8)
                     Log.d("RawModeViewModel", "Setraw response: $decodedResponse")
                     if (decodedResponse.contains("setraw.ok")) {
