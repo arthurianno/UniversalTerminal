@@ -4,6 +4,8 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.example.universalterminal.domain.entities.BleDevice
 import com.example.universalterminal.domain.entities.DeviceInfo
 import com.example.universalterminal.domain.repository.DeviceWorkingRepository
@@ -23,7 +25,7 @@ class DeviceWorkingRepositoryImpl @Inject constructor(
     private val TAG = "DeviceRepository"
 
     private val sharedPreferences: SharedPreferences by lazy {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        createSecurePreferences()
     }
 
     private val bluetoothAdapter by lazy {
@@ -43,6 +45,24 @@ class DeviceWorkingRepositoryImpl @Inject constructor(
         private const val KEY_DEVICE_INFO_MODEL = "device_info_model"
         private const val KEY_DEVICE_INFO_FIRMWARE_VERSION = "device_info_firmware_version"
         private const val KEY_DEVICE_INFO_HARDWARE_VERSION = "device_info_hardware_version"
+    }
+
+    private fun createSecurePreferences(): SharedPreferences {
+        return try {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                context,
+                PREFS_NAME,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Falling back to regular SharedPreferences", e)
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
     }
 
     override suspend fun saveLastConnectedDevice(device: BleDevice): Unit = withContext(Dispatchers.IO) {

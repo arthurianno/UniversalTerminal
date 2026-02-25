@@ -73,6 +73,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation(libs.androidx.hilt.navigation.compose)
     implementation ("androidx.compose.material:material-icons-extended:1.5.4")
+    implementation ("androidx.security:security-crypto:1.1.0-alpha06")
 
     implementation ("no.nordicsemi.android:ble:2.7.5")
     implementation ("no.nordicsemi.android:dfu:2.4.1")
