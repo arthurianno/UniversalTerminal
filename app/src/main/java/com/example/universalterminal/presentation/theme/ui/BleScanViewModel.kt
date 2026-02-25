@@ -91,7 +91,7 @@ class BleScanViewModel @Inject constructor(
             _currentPin.value = pin
             _connectingDevice.value?.let { device ->
                 saveDevicePasswordUseCase.invoke(device.address, pin)
-                Log.d("BleScanViewModel", "Saving PIN: $pin for device: ${device.address}")
+                Log.d("BleScanViewModel", "Saving PIN for device: ${device.address}")
             } ?: Log.e("BleScanViewModel", "No device selected to save PIN")
         }
     }

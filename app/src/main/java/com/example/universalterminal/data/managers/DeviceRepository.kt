@@ -182,7 +182,7 @@ class DeviceWorkingRepositoryImpl @Inject constructor(
                     putString("$KEY_PASSWORD_PREFIX$deviceAddress", password)
                     apply()
                 }
-                Log.d(TAG, "Saved password '$password' for device: $deviceAddress")
+                Log.d(TAG, "Saved password for device: $deviceAddress")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving device password", e)
             }

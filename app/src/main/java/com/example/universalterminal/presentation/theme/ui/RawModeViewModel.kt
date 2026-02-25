@@ -86,7 +86,6 @@ class RawModeViewModel @Inject constructor(
             val connectionResult = connectToDeviceUseCase.invoke(_deviceInfo.value!!)
             if (connectionResult) {
                 val password = getDevicePasswordUseCase.invoke(_deviceInfo.value!!.address).first()
-                Log.e("RawModeViewModel", "PIN: $password")
                 if (password == null) {
                     _errorState.value = "No password found for device"
                     return false
