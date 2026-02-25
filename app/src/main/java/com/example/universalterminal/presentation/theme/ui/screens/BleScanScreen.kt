@@ -53,7 +53,7 @@ fun BleScanScreen(
     val shouldNavigate by viewModel.navigateToConnected.collectAsState()
     var lastScanTime by remember { mutableStateOf(0L) }
     val debounceTime = 1000L
-    var selectedScanMode by remember { mutableStateOf(ScanMode.AGGRESSIVE) }
+    val selectedScanMode by viewModel.scanMode.collectAsState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val pinError by viewModel.pinError.collectAsState()
@@ -121,7 +121,6 @@ fun BleScanScreen(
                             RadioButton(
                                 selected = selectedScanMode == mode,
                                 onClick = {
-                                    selectedScanMode = mode
                                     viewModel.setScanMode(mode)
                                 }
                             )
