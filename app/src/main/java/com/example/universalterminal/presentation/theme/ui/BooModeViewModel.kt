@@ -298,6 +298,11 @@ class BootModeViewModel @Inject constructor(
                 when (firmware.type) {
                     FirmwareType.NORDIC -> {
                         val savedPin = getDevicePasswordUseCase.invoke(_deviceInfo.value!!.address).first()
+                        if (savedPin.isNullOrBlank()) {
+                            _firmwareUpdateState.value = FirmwareUpdateState.Error("Device PIN is missing")
+                            _isUpdateButtonEnabled.value = true
+                            return
+                        }
                         val decodedResponse = String(
                             sendCommandUseCase.invoke("pin.$savedPin"),
                             Charsets.UTF_8
@@ -311,7 +316,7 @@ class BootModeViewModel @Inject constructor(
                     }
                     FirmwareType.WCH -> {
                         val decodedResponse = String(
-                            sendCommandUseCase.invoke("pin.master"),
+                            sendCommandUseCase.invoke(MASTER_PIN),
                             Charsets.UTF_8
                         )
                         Log.e("ViewModel", "PIN Response: $decodedResponse")
