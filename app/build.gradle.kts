@@ -56,10 +56,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
-    implementation (libs.ble)
-    implementation (libs.hilt.android.compiler)
-    implementation (libs.hilt.android)
-    kapt (libs.hilt.compiler)
+    implementation(libs.ble)
+    implementation(libs.hilt.android)
+    kapt(libs.hilt.android.compiler)
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
@@ -72,11 +71,10 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation(libs.androidx.hilt.navigation.compose)
-    implementation ("androidx.compose.material:material-icons-extended:1.5.4")
-    implementation ("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.compose.material:material-icons-extended:1.5.4")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
-    implementation ("no.nordicsemi.android:ble:2.7.5")
-    implementation ("no.nordicsemi.android:dfu:2.4.1")
+    implementation("no.nordicsemi.android:dfu:2.4.1")
 
 
 }
