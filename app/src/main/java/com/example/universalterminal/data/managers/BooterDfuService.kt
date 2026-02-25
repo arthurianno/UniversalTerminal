@@ -6,6 +6,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import com.example.universalterminal.presentation.theme.MainActivity
 import no.nordicsemi.android.dfu.DfuBaseService
 
 class BooterDfuService : DfuBaseService() {
@@ -15,8 +16,7 @@ class BooterDfuService : DfuBaseService() {
         createNotificationChannel()
     }
 
-    override fun getNotificationTarget(): Class<out Activity>? =
-        Class.forName(ACTIVITY) as? Class<Activity>
+    override fun getNotificationTarget(): Class<out Activity> = MainActivity::class.java
 
 
     private fun createNotificationChannel() {
@@ -37,7 +37,4 @@ class BooterDfuService : DfuBaseService() {
         }
     }
 
-    companion object {
-        private const val ACTIVITY = "com.example.universalterminal.presentation.theme.MainActivity"
-    }
 }
