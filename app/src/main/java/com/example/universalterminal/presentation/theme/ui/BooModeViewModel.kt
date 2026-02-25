@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.example.universalterminal.di.toDfuAddress
 import com.example.universalterminal.domain.entities.BleDevice
+import com.example.universalterminal.domain.entities.ScanMode
 import com.example.universalterminal.domain.repository.DeviceWorkingRepository
 import com.example.universalterminal.domain.useCase.CheckDeviceConnectionUseCase
 import com.example.universalterminal.domain.useCase.ConnectToDeviceUseCase

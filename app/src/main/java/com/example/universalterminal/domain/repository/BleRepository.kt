@@ -2,7 +2,7 @@ package com.example.universalterminal.domain.repository
 
 import android.bluetooth.BluetoothDevice
 import com.example.universalterminal.domain.entities.BleDevice
-import com.example.universalterminal.presentation.theme.ui.ScanMode
+import com.example.universalterminal.domain.entities.ScanMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 

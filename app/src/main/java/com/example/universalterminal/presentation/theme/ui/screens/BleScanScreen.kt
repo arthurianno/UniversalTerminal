@@ -30,8 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.universalterminal.domain.entities.BleDevice
+import com.example.universalterminal.domain.entities.ScanMode
 import com.example.universalterminal.presentation.theme.ui.BleScanViewModel
-import com.example.universalterminal.presentation.theme.ui.ScanMode
 import com.example.universalterminal.presentation.theme.ui.dialogs.DeviceItemEnhanced
 import kotlinx.coroutines.launch
 

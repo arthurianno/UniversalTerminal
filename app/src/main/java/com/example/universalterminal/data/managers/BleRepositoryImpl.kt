@@ -10,8 +10,8 @@ import androidx.annotation.RequiresApi
 import com.example.universalterminal.data.BLE.BleDeviceManager
 import com.example.universalterminal.data.managers.BluetoothConstants.CONFIGURATION_SIZE
 import com.example.universalterminal.domain.entities.BleDevice
+import com.example.universalterminal.domain.entities.ScanMode
 import com.example.universalterminal.domain.repository.BleRepository
-import com.example.universalterminal.presentation.theme.ui.ScanMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay

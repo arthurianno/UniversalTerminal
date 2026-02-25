@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.universalterminal.data.BLE.BleDeviceManager.DeviceType
 import com.example.universalterminal.domain.entities.BleDevice
 import com.example.universalterminal.domain.entities.DeviceInfo
+import com.example.universalterminal.domain.entities.ScanMode
 import com.example.universalterminal.domain.useCase.ConnectToDeviceUseCase
 import com.example.universalterminal.domain.useCase.SaveDeviceInformationUseCase
 import com.example.universalterminal.domain.useCase.SaveDevicePasswordUseCase
@@ -249,10 +250,4 @@ class BleScanViewModel @Inject constructor(
         }
         return DeviceType.UNKNOWN
     }
-}
-
-enum class ScanMode {
-    LOW_POWER,
-    BALANCED,
-    AGGRESSIVE
 }

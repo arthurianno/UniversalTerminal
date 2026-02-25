@@ -1,8 +1,8 @@
 package com.example.universalterminal.domain.useCase
 
 import com.example.universalterminal.domain.entities.BleDevice
+import com.example.universalterminal.domain.entities.ScanMode
 import com.example.universalterminal.domain.repository.BleRepository
-import com.example.universalterminal.presentation.theme.ui.ScanMode
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 

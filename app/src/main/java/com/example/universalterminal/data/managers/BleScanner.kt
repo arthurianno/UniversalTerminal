@@ -14,7 +14,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import com.example.universalterminal.domain.entities.BleDevice
-import com.example.universalterminal.presentation.theme.ui.ScanMode
+import com.example.universalterminal.domain.entities.ScanMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
