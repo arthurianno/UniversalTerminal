@@ -1,8 +1,8 @@
 package com.example.universalterminal.data.managers
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
@@ -129,13 +129,15 @@ class BleScanner @Inject constructor(
     }
 }
 
-class BleScannerWrapper {
-    private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
-    private val bleScanner = bluetoothAdapter?.bluetoothLeScanner
+class BleScannerWrapper(private val context: Context) {
+    private val bluetoothAdapter
+        get() = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+    private val bleScanner
+        get() = bluetoothAdapter?.bluetoothLeScanner
 
     @SuppressLint("MissingPermission")
     fun startScan(callback: ScanCallback, settings: ScanSettings, filters: List<ScanFilter>?) {
-        bleScanner?.startScan(filters, settings, callback)  // Изменил: добавил filters
+        bleScanner?.startScan(filters, settings, callback)
     }
 
     @SuppressLint("MissingPermission")

@@ -3,6 +3,7 @@ package com.example.universalterminal.data.managers
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -38,7 +39,8 @@ class BleRepositoryImpl @Inject constructor(
     private val bleDeviceManager: BleDeviceManager,
     @ApplicationContext private val context: Context
 ): BleRepository {
-    private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+    private val bluetoothAdapter: BluetoothAdapter?
+        get() = context.getSystemService(BluetoothManager::class.java)?.adapter
 
     @RequiresApi(Build.VERSION_CODES.O)
     @SuppressLint("MissingPermission")

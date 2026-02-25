@@ -21,8 +21,8 @@ object projectModule {
 
     @Provides
     @Singleton
-    fun provideBleScannerWrapper(): BleScannerWrapper {
-        return BleScannerWrapper()
+    fun provideBleScannerWrapper(@ApplicationContext context: Context): BleScannerWrapper {
+        return BleScannerWrapper(context)
     }
 
     @Provides
