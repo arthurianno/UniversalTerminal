@@ -1,8 +1,10 @@
 package com.example.universalterminal.presentation.theme.ui.screens
 
-import android.annotation.SuppressLint
+import android.Manifest
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -30,13 +32,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.core.content.ContextCompat
 import com.example.universalterminal.domain.entities.BleDevice
 import com.example.universalterminal.domain.entities.ScanMode
 import com.example.universalterminal.presentation.theme.ui.BleScanViewModel
 import com.example.universalterminal.presentation.theme.ui.dialogs.DeviceItemEnhanced
 import kotlinx.coroutines.launch
 
-@SuppressLint("MissingPermission")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun BleScanScreen(
@@ -63,6 +65,9 @@ fun BleScanScreen(
 
     val bondedDevices = remember(context) {
         derivedStateOf {
+            if (!hasBluetoothConnectPermission(context)) {
+                return@derivedStateOf emptySet()
+            }
             val bluetoothManager =
                 context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             bluetoothManager?.adapter?.bondedDevices?.map { device ->
@@ -359,9 +364,7 @@ fun BleScanScreen(
                                 }
 
                                 items(filteredBondedDevices) { device ->
-                                    DeviceItemEnhanced(device = device) @androidx.annotation.RequiresPermission(
-                                        android.Manifest.permission.BLUETOOTH_CONNECT
-                                    ) {
+                                    DeviceItemEnhanced(device = device) {
                                         Log.i("BleScanScreen", "Showing PIN dialog for bonded device ${device.address}")
                                         currentDevice = device
                                         showPinDialog = true
@@ -373,7 +376,7 @@ fun BleScanScreen(
                 }
             }
 
-            if (showPinDialog && currentDevice != null) {
+            currentDevice?.takeIf { showPinDialog }?.let { dialogDevice ->
                 Dialog(onDismissRequest = { showPinDialog = false }) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
@@ -394,7 +397,7 @@ fun BleScanScreen(
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                "Connect to ${currentDevice!!.name}",
+                                "Connect to ${dialogDevice.name}",
                                 style = MaterialTheme.typography.titleLarge,
                                 textAlign = TextAlign.Center
                             )
@@ -448,9 +451,7 @@ fun BleScanScreen(
                                 }
                                 Button(
                                     onClick = {
-                                        currentDevice?.let { device ->
-                                            viewModel.connectToDevice(device, pinCode)
-                                        }
+                                        viewModel.connectToDevice(dialogDevice, pinCode)
                                     },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(8.dp),
@@ -467,7 +468,7 @@ fun BleScanScreen(
                 }
             }
 
-            if (connectionInProgress && connectingDevice != null) {
+            connectingDevice?.takeIf { connectionInProgress }?.let { activeDevice ->
                 Dialog(onDismissRequest = { /* Prevent dismiss */ }) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
@@ -486,7 +487,7 @@ fun BleScanScreen(
                             )
                             Spacer(modifier = Modifier.height(24.dp))
                             Text(
-                                "Connecting to ${connectingDevice!!.name}",
+                                "Connecting to ${activeDevice.name}",
                                 style = MaterialTheme.typography.titleMedium,
                                 textAlign = TextAlign.Center
                             )
@@ -509,4 +510,12 @@ fun BleScanScreen(
             }
         }
     }
+}
+
+private fun hasBluetoothConnectPermission(context: Context): Boolean {
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.BLUETOOTH_CONNECT
+        ) == PackageManager.PERMISSION_GRANTED
 }

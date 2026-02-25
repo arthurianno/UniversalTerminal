@@ -1,6 +1,6 @@
 package com.example.universalterminal.data.managers
 
-import android.annotation.SuppressLint
+import android.Manifest
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
@@ -12,6 +12,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.annotation.RequiresPermission
 import androidx.core.content.ContextCompat
 import com.example.universalterminal.domain.entities.BleDevice
 import com.example.universalterminal.domain.entities.ScanMode
@@ -78,9 +79,10 @@ class BleScanner @Inject constructor(
             )
 
             scanCallback = object : ScanCallback() {
-                @SuppressLint("MissingPermission")
                 override fun onScanResult(callbackType: Int, result: ScanResult) {
-                    val deviceName = result.scanRecord?.deviceName ?: result.device.name ?: "Unknown"
+                    val deviceName = result.scanRecord?.deviceName
+                        ?: if (hasBluetoothConnectPermission()) result.device.name else null
+                        ?: "Unknown"
                     if (deviceName != "Unknown") {
                         val bleDevice = BleDevice(
                             name = deviceName,
@@ -127,6 +129,14 @@ class BleScanner @Inject constructor(
             _devicesFlow.value = emptySet()
         }
     }
+
+    private fun hasBluetoothConnectPermission(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
+    }
 }
 
 class BleScannerWrapper(private val context: Context) {
@@ -135,12 +145,12 @@ class BleScannerWrapper(private val context: Context) {
     private val bleScanner
         get() = bluetoothAdapter?.bluetoothLeScanner
 
-    @SuppressLint("MissingPermission")
+    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
     fun startScan(callback: ScanCallback, settings: ScanSettings, filters: List<ScanFilter>?) {
         bleScanner?.startScan(filters, settings, callback)
     }
 
-    @SuppressLint("MissingPermission")
+    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
     fun stopScan(callback: ScanCallback) {
         bleScanner?.stopScan(callback)
     }

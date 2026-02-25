@@ -1,13 +1,15 @@
 package com.example.universalterminal.data.managers
 
-import android.annotation.SuppressLint
+import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.core.content.ContextCompat
 import com.example.universalterminal.data.BLE.BleDeviceManager
 import com.example.universalterminal.data.managers.BluetoothConstants.CONFIGURATION_SIZE
 import com.example.universalterminal.domain.entities.BleDevice
@@ -43,7 +45,6 @@ class BleRepositoryImpl @Inject constructor(
         get() = context.getSystemService(BluetoothManager::class.java)?.adapter
 
     @RequiresApi(Build.VERSION_CODES.O)
-    @SuppressLint("MissingPermission")
     override suspend fun scanDevices(scanMode: ScanMode): StateFlow<Set<BleDevice>> {
         stopScanDevices()
         bleScanner.startScan(scanMode)
@@ -57,8 +58,12 @@ class BleRepositoryImpl @Inject constructor(
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    @SuppressLint("MissingPermission")
     override suspend fun connectToDevice(device: BleDevice): Boolean {
+        if (!hasBluetoothConnectPermission()) {
+            Log.e("BleRepository", "Missing BLUETOOTH_CONNECT permission for connect operation")
+            return false
+        }
+
         val bondedDevices = bluetoothAdapter?.bondedDevices ?: emptySet()
         val bondedDevice = bondedDevices.find { it.address == device.address }
 
@@ -120,6 +125,14 @@ class BleRepositoryImpl @Inject constructor(
         } finally {
             stopScanDevices()
         }
+    }
+
+    private fun hasBluetoothConnectPermission(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
     }
 
     override suspend fun sendCommand(command: String): ByteArray {
@@ -287,11 +300,11 @@ class BleRepositoryImpl @Inject constructor(
                         Log.i("FileProcessing","NULL")
                         Log.i("FileProcessing","Required files not found in ZIP")
                         throw IllegalStateException("Required files not found in ZIP")
-
-
                     }
 
-                    Pair(binData!!, datData!!)
+                    val firmwareData = binData ?: throw IllegalStateException("BIN file missing in ZIP")
+                    val metadataData = datData ?: throw IllegalStateException("DAT file missing in ZIP")
+                    Pair(firmwareData, metadataData)
                 }
             }
     }
