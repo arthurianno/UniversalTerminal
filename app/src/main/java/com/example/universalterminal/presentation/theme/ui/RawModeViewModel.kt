@@ -386,6 +386,7 @@ class RawModeViewModel @Inject constructor(
                         "TIMESTAMP" -> {
                             val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
                             val date = dateFormat.parse(data.newValue!!)
+                                ?: throw IllegalArgumentException("Invalid timestamp: ${data.newValue}")
                             ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
                                 .putInt((date.time / 1000).toInt()).array()
                         }
