@@ -1,12 +1,9 @@
 package com.example.universalterminal.domain.entities
 
-import android.bluetooth.BluetoothDevice
-
 data class BleDevice(
     val name: String,
     val address: String,
     val rssi: Int,
-    val device: BluetoothDevice,
     val deviceInfo: DeviceInfo? = null
 ) {
     override fun equals(other: Any?): Boolean {

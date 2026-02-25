@@ -63,7 +63,7 @@ class TerminalViewModel @Inject constructor(
                 return
             }
 
-            val savedPin = deviceWorkingRepository.getDevicePassword(device.device.address).first()
+            val savedPin = deviceWorkingRepository.getDevicePassword(device.address).first()
             Log.e("Check pass0","$savedPin")
             if (savedPin != null) {
                 _terminalState.update { it.copy(responses = it.responses + "Sending PIN...") }

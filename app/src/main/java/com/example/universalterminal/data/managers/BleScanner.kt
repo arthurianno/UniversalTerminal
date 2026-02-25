@@ -85,8 +85,7 @@ class BleScanner @Inject constructor(
                         val bleDevice = BleDevice(
                             name = deviceName,
                             address = result.device.address,
-                            rssi = result.rssi,
-                            device = result.device
+                            rssi = result.rssi
                         )
                         val existingIndex = scannedDevices.indexOfFirst { it.address == bleDevice.address }
                         if (existingIndex >= 0) {

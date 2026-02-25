@@ -105,21 +105,12 @@ class DeviceWorkingRepositoryImpl @Inject constructor(
 
                         try {
                             // Проверяем, доступно ли устройство через BluetoothAdapter
-                            val device = bluetoothAdapter.getRemoteDevice(address)
-                            // Проверяем, существует ли устройство
-                            if (device != null) {
-                                BleDevice(
-                                    name = name,
-                                    address = address,
-                                    rssi = rssi,
-                                    device = device
-                                )
-                            } else {
-                                // Если устройство недоступно, очищаем данные и возвращаем null
-                                clearDeviceData()
-                                Log.w(TAG, "Device with address $address is not available, cleared data")
-                                null
-                            }
+                            bluetoothAdapter.getRemoteDevice(address)
+                            BleDevice(
+                                name = name,
+                                address = address,
+                                rssi = rssi
+                            )
                         } catch (e: IllegalArgumentException) {
                             // Если адрес недействителен или устройство не найдено
                             clearDeviceData()

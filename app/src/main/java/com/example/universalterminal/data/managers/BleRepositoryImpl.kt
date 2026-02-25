@@ -62,7 +62,7 @@ class BleRepositoryImpl @Inject constructor(
 
         if (bondedDevice != null) {
             Log.i("BleRepository", "Connecting to bonded device ${device.address}")
-            return bleDeviceManager.connectToDevice(device.copy(device = bondedDevice))
+            return bleDeviceManager.connectToDevice(bondedDevice)
         }
 
         Log.i("BleRepository", "Device ${device.address} not bonded, attempting direct connection")
@@ -80,7 +80,7 @@ class BleRepositoryImpl @Inject constructor(
             }
         }
 
-        val success = bleDeviceManager.connectToDevice(device.copy(device = bluetoothDevice))
+        val success = bleDeviceManager.connectToDevice(bluetoothDevice)
         if (success) {
             Log.i("BleRepository", "Direct connection successful for ${device.address}")
             return true
@@ -104,10 +104,16 @@ class BleRepositoryImpl @Inject constructor(
                 Log.e("BleRepository", "Device ${device.address} not found during scan")
                 false
             } else {
-                if (targetDevice.device.bondState == BluetoothDevice.BOND_NONE) {
-                    targetDevice.device.createBond()
+                val targetBluetoothDevice = bluetoothAdapter?.getRemoteDevice(targetDevice.address)
+                if (targetBluetoothDevice == null) {
+                    false
+                } else {
+                    if (targetBluetoothDevice.bondState == BluetoothDevice.BOND_NONE) {
+                        targetBluetoothDevice.createBond()
+                    }
+                    bleDeviceManager.connectToDevice(targetBluetoothDevice)
                 }
-                bleDeviceManager.connectToDevice(targetDevice)
+
             }
         } finally {
             stopScanDevices()

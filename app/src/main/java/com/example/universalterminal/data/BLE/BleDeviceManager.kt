@@ -12,7 +12,6 @@ import com.example.universalterminal.data.managers.BluetoothConstants.BOOT_MODE_
 import com.example.universalterminal.data.managers.BluetoothConstants.CONFIGURATION_CMD
 import com.example.universalterminal.data.managers.BluetoothConstants.RAW_START_MARK
 import com.example.universalterminal.data.managers.BluetoothConstants.WRITE_CMD
-import com.example.universalterminal.domain.entities.BleDevice
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -90,10 +89,10 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
 
 
 
-    suspend fun connectToDevice(device: BleDevice): Boolean = withContext(Dispatchers.IO) {
+    suspend fun connectToDevice(device: BluetoothDevice): Boolean = withContext(Dispatchers.IO) {
         try {
             withTimeout(10_000) {
-                connect(device.device)
+                connect(device)
                     .usePreferredPhy(PhyRequest.PHY_LE_1M_MASK)
                     .retry(3, 100)
                     .useAutoConnect(false)

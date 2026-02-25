@@ -70,7 +70,6 @@ fun BleScanScreen(
                     name = device.name ?: "Unknown Device",
                     address = device.address,
                     rssi = 0,
-                    device = device,
                     deviceInfo = null
                 )
             }?.toSet() ?: emptySet()
