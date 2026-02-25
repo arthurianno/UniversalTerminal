@@ -145,13 +145,12 @@ fun RawModeScreen(
                             ConfigCard(
                                 data = data,
                                 onValueChange = { newValue ->
-                                    val currentItem = responseData.find { it.address == data.address }!!
-                                    val wasNotModified = !currentItem.isModified
+                                    val wasNotModified = !data.isModified
                                     val updatedData = responseData.map {
                                         if (it.address == data.address) it.copy(newValue = newValue) else it
                                     }
                                     responseData = updatedData
-                                    val isNowModified = newValue != currentItem.value
+                                    val isNowModified = newValue != data.value
                                     if (wasNotModified && isNowModified) {
                                         scrollToIndex = index
                                     }

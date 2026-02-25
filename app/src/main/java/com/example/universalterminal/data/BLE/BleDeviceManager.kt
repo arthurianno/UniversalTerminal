@@ -50,7 +50,7 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
         return controlRequest != null && controlResponse != null
     }
 
-    @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     override fun initialize() {
         super.initialize()
         requestConnectionPriority(ConnectionPriorityRequest.CONNECTION_PRIORITY_HIGH).enqueue()
@@ -125,12 +125,12 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
     fun writeDataRaw(command: ByteArray): Flow<WriteResult> = flow {
         Log.d("BleControlManager", "Connection state: ${isConnected()}")
 
-        if (!isConnected() || controlRequest == null || controlResponse == null) {
+        val requestCharacteristic = controlRequest
+        val responseCharacteristic = controlResponse
+        if (!isConnected() || requestCharacteristic == null || responseCharacteristic == null) {
             emit(WriteResult.DeviceNotConnected)
             return@flow
         }
-
-        val characteristic = controlRequest!!
 
         Log.d("BleControlManager", "Sending command: ${command.joinToString(" ") { it.toString(16).padStart(2, '0') }}")
 
@@ -138,19 +138,19 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
         val responseChannel = Channel<ByteArray>(Channel.BUFFERED)
 
         // Устанавливаем callback для уведомлений
-        setNotificationCallback(controlResponse).with { _, data ->
+        setNotificationCallback(responseCharacteristic).with { _, data ->
             val response = data.value ?: ByteArray(0)
             Log.d("BleControlManager", "Response received: ${response.joinToString(" ") { it.toString(16).padStart(2, '0') }}")
             responseChannel.trySend(response)
         }
 
         // Включаем уведомления
-        enableNotifications(controlResponse!!).enqueue()
+        enableNotifications(responseCharacteristic).enqueue()
 
         try {
             // Отправляем команду
-            val writeResult = writeCharacteristic(
-                characteristic,
+            writeCharacteristic(
+                requestCharacteristic,
                 command,
                 BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
             ).await()
@@ -172,14 +172,16 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
             Log.e("BleControlManager", "Failed to send command: ${e.message}")
             emit(WriteResult.Error(e))
         } finally {
-            disableNotifications(controlResponse!!).enqueue()
+            disableNotifications(responseCharacteristic).enqueue()
             responseChannel.close()
         }
     }.flowOn(Dispatchers.IO)
 
     fun sendApplyCommand(): Flow<Boolean> = flow {
-        if (!isConnected || controlRequest == null) {
-            Log.e("BleDeviceManager", "Device is not connected or controlRequest is null")
+        val requestCharacteristic = controlRequest
+        val responseCharacteristic = controlResponse
+        if (!isConnected || requestCharacteristic == null || responseCharacteristic == null) {
+            Log.e("BleDeviceManager", "Device is not connected or required characteristics are null")
             emit(false)
             return@flow
         }
@@ -187,17 +189,17 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
         val commandData = byteArrayOf(RAW_START_MARK, 0xEE.toByte()) // <0x21> <0xEE>
         val responseChannel = Channel<Boolean>(Channel.CONFLATED)
 
-        setNotificationCallback(controlResponse).with { _, data ->
+        setNotificationCallback(responseCharacteristic).with { _, data ->
             val response = data.value ?: ByteArray(0)
             val success = response.size >= 2 && response[0] == 0x00.toByte() && response[1] == 0xEE.toByte()
             Log.d("BleDeviceManager", "Apply response: ${response.joinToString(" ") { it.toString(16) }}")
             responseChannel.trySend(success)
         }
 
-        enableNotifications(controlResponse!!).enqueue()
+        enableNotifications(responseCharacteristic).enqueue()
 
         writeCharacteristic(
-            controlRequest!!,
+            requestCharacteristic,
             commandData,
             BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
         ).done {
@@ -211,7 +213,7 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
             responseChannel.receive()
         } ?: false
 
-        disableNotifications(controlResponse!!).enqueue()
+        disableNotifications(responseCharacteristic).enqueue()
         responseChannel.close()
 
         emit(success)
@@ -220,14 +222,19 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
 
 
     suspend fun sendCommand(command: String): ByteArray = withContext(Dispatchers.IO) {
-        if (!isConnected || controlRequest == null) {
-            Log.d("BleDeviceManager", "Connection state: $isConnected, controlRequest: $controlRequest")
+        val requestCharacteristic = controlRequest
+        val responseCharacteristic = controlResponse
+        if (!isConnected || requestCharacteristic == null || responseCharacteristic == null) {
+            Log.d(
+                "BleDeviceManager",
+                "Connection state: $isConnected, controlRequest: $controlRequest, controlResponse: $controlResponse"
+            )
             throw IllegalStateException("Device is not connected")
         }
 
         val responseChannel = Channel<ByteArray>(Channel.BUFFERED)
 
-        setNotificationCallback(controlResponse).with { device, data ->
+        setNotificationCallback(responseCharacteristic).with { _, data ->
             val response = data.value ?: ByteArray(0)
             val decodedResponse = String(response, Charsets.UTF_8)
             Log.d("BleDeviceManager", "Notification received decoded: $decodedResponse")
@@ -236,12 +243,12 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
         }
 
         Log.d("BleDeviceManager", "Enabling notifications...")
-        enableNotifications(controlResponse!!).enqueue()
+        enableNotifications(responseCharacteristic).enqueue()
 
         try {
             Log.d("BleDeviceManager", "Writing characteristic: $command")
             writeCharacteristic(
-                controlRequest,
+                requestCharacteristic,
                 command.toByteArray(),
                 BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
             ).enqueue()
@@ -250,7 +257,7 @@ class BleDeviceManager @Inject constructor(@ApplicationContext private val conte
             withTimeout(5_000) { responseChannel.receive() }
         } finally {
             Log.d("BleDeviceManager", "Disabling notifications...")
-            disableNotifications(controlResponse!!).enqueue()
+            disableNotifications(responseCharacteristic).enqueue()
             responseChannel.close()
         }
     }

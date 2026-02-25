@@ -1,11 +1,9 @@
 package com.example.universalterminal.presentation.theme.ui
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothDevice
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.universalterminal.data.BLE.BleDeviceManager
 import com.example.universalterminal.domain.entities.BleDevice
 import com.example.universalterminal.domain.useCase.CheckDeviceConnectionUseCase
@@ -77,16 +75,17 @@ class RawModeViewModel @Inject constructor(
     }
 
     private suspend fun connectToDevice(): Boolean {
-        if (_deviceInfo.value == null) {
+        val device = _deviceInfo.value
+        if (device == null) {
             _errorState.value = "No device selected to connect"
             return false
         }
 
         return try {
-            val connectionResult = connectToDeviceUseCase.invoke(_deviceInfo.value!!)
+            val connectionResult = connectToDeviceUseCase.invoke(device)
             if (connectionResult) {
-                val password = getDevicePasswordUseCase.invoke(_deviceInfo.value!!.address).first()
-                if (password == null) {
+                val password = getDevicePasswordUseCase.invoke(device.address).first()
+                if (password.isNullOrBlank()) {
                     _errorState.value = "No password found for device"
                     return false
                 }
@@ -128,7 +127,12 @@ class RawModeViewModel @Inject constructor(
                 }
                 Log.d("RawModeViewModel", "Proceeding to send multiple read commands")
                 if (forModify) {
-                    sendModifiedData(modifiedData!!)
+                    val dataToModify = modifiedData
+                    if (dataToModify == null) {
+                        _errorState.value = "No modified data provided"
+                        return@launch
+                    }
+                    sendModifiedData(dataToModify)
                 } else {
                     sendMultipleReadCommands()
                 }
@@ -367,41 +371,46 @@ class RawModeViewModel @Inject constructor(
                 }
 
                 for (data in modifiedData.filter { it.isModified }) {
+                    val newValue = data.newValue
+                    if (newValue == null) {
+                        _errorState.value = "Missing value for ${data.name}"
+                        continue
+                    }
                     val address = data.address.removePrefix("0x").toInt(16)
                     Log.d("RawModeViewModel", "Sending modified data for ${data.name} and $address")
                     val newValueBytes = when (data.type) {
                         "FLOAT" -> ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
-                            .putFloat(data.newValue!!.toFloat()).array()
+                            .putFloat(newValue.toFloat()).array()
 
                         "UINT32" -> ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
-                            .putInt(data.newValue!!.toUInt().toInt()).array()
+                            .putInt(newValue.toUInt().toInt()).array()
 
                         "UINT32_HEX" -> {
-                            val decimalValue = data.newValue!!.toUInt()
+                            val decimalValue = newValue.toUInt()
                             ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
                                 .putInt(decimalValue.toInt()).array()
                         }
 
                         "TIMESTAMP" -> {
                             val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-                            val date = dateFormat.parse(data.newValue!!)
-                                ?: throw IllegalArgumentException("Invalid timestamp: ${data.newValue}")
+                            val date = dateFormat.parse(newValue)
+                                ?: throw IllegalArgumentException("Invalid timestamp: $newValue")
                             ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
                                 .putInt((date.time / 1000).toInt()).array()
                         }
 
                         "BITWISE" -> {
-                            val binaryString = data.newValue!!.replace(" ", "")
+                            val binaryString = newValue.replace(" ", "")
                             val intValue = binaryString.toUInt(2)
                             ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
                                 .putInt(intValue.toInt()).array()
                         }
 
                         "INT32" -> ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
-                            .putInt(data.newValue!!.toInt()).array()
+                            .putInt(newValue.toInt()).array()
 
                         "Char[]" -> {
-                            val str = data.newValue!! + '\u0000' // Добавляем \0
+                            val str = newValue + '\u0000' // Добавляем \0
                             val padded = str.padEnd(16, '\u0000') // Падим \0
                             padded.toByteArray(charset("CP1251")).copyOf(16)
                         }
