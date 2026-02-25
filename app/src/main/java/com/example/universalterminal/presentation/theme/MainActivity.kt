@@ -16,7 +16,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -30,8 +29,6 @@ import com.example.universalterminal.presentation.theme.ui.screens.ConnectedDevi
 import com.example.universalterminal.presentation.theme.ui.screens.RawModeScreen
 import com.example.universalterminal.presentation.theme.ui.screens.TerminalModeScreen
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -71,12 +68,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 )
-
-                LaunchedEffect(Unit) {
-                    withContext(Dispatchers.IO) {
-                        viewModel.setContext(this@MainActivity)
-                    }
-                }
 
                 NavHost(navController = navController, startDestination = "scan") {
                     composable("scan") {

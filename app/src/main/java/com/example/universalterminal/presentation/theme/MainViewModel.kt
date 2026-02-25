@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.universalterminal.domain.entities.BleDevice
 import com.example.universalterminal.domain.repository.DeviceWorkingRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,7 +23,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val deviceWorkingRepository: DeviceWorkingRepository
+    private val deviceWorkingRepository: DeviceWorkingRepository,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     private val _allPermissionsGranted = MutableStateFlow(false)
@@ -37,8 +39,6 @@ class MainViewModel @Inject constructor(
     private val _lastConnectedDevice = MutableStateFlow<BleDevice?>(null)
     val lastConnectedDevice: StateFlow<BleDevice?> = _lastConnectedDevice.asStateFlow()
 
-    private var context: Context? = null
-
     init {
         viewModelScope.launch {
             deviceWorkingRepository.getLastConnectedDevice().collect { device ->
@@ -46,12 +46,7 @@ class MainViewModel @Inject constructor(
                 _lastConnectedDevice.value = device
             }
         }
-    }
-
-    fun setContext(context: Context) {
-        this.context = context
         checkInitialPermissions()
-        //refreshLastConnectedDevice()
     }
 
     fun checkBlePermissions() {
@@ -88,30 +83,23 @@ class MainViewModel @Inject constructor(
 
 
     private fun checkInitialPermissions() {
-        context?.let { ctx ->
-            val permissionsToCheck = arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION
-            )
-            checkPermissions(permissionsToCheck)
-        } ?: run {
-            Log.e("MainViewModel", "Context is null during permission check")
-            _errorMessage.value = "Контекст приложения недоступен"
-        }
+        val permissionsToCheck = arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        checkPermissions(permissionsToCheck)
     }
 
     private fun checkPermissions(permissionsToCheck: Array<String>) {
-        context?.let { ctx ->
-            val deniedPermissions = permissionsToCheck.filter {
-                ContextCompat.checkSelfPermission(ctx, it) != PackageManager.PERMISSION_GRANTED
-            }
-            viewModelScope.launch(Dispatchers.Main) {
-                _visiblePermissionDialogQueue.value = deniedPermissions
-                _allPermissionsGranted.value = deniedPermissions.isEmpty()
-                if (deniedPermissions.isNotEmpty()) {
-                    Log.d("MainViewModel", "Permissions denied: $deniedPermissions")
-                } else {
-                    Log.d("MainViewModel", "All required permissions granted")
-                }
+        val deniedPermissions = permissionsToCheck.filter {
+            ContextCompat.checkSelfPermission(appContext, it) != PackageManager.PERMISSION_GRANTED
+        }
+        viewModelScope.launch(Dispatchers.Main) {
+            _visiblePermissionDialogQueue.value = deniedPermissions
+            _allPermissionsGranted.value = deniedPermissions.isEmpty()
+            if (deniedPermissions.isNotEmpty()) {
+                Log.d("MainViewModel", "Permissions denied: $deniedPermissions")
+            } else {
+                Log.d("MainViewModel", "All required permissions granted")
             }
         }
     }
